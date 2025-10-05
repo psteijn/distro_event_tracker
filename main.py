@@ -86,6 +86,49 @@ class EventTracker:
 # Initialize event tracker
 event_tracker = EventTracker()
 
+def parse_timestamp(timestamp_str: str) -> datetime:
+    """Parse various timestamp formats into datetime object"""
+    timestamp_str = timestamp_str.strip()
+    
+    # Try epoch timestamp first (numeric)
+    if timestamp_str.isdigit():
+        try:
+            epoch_seconds = int(timestamp_str)
+            return datetime.fromtimestamp(epoch_seconds)
+        except (ValueError, OSError):
+            pass
+    
+    # Try full timestamp format: YYYY-MM-DD HH:MM:SS
+    try:
+        return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+    except ValueError:
+        pass
+    
+    # Try date only format: YYYY-MM-DD
+    try:
+        return datetime.strptime(timestamp_str, '%Y-%m-%d')
+    except ValueError:
+        pass
+    
+    # Try alternative formats
+    formats = [
+        '%Y-%m-%d %H:%M',  # YYYY-MM-DD HH:MM
+        '%Y/%m/%d %H:%M:%S',  # YYYY/MM/DD HH:MM:SS
+        '%Y/%m/%d %H:%M',  # YYYY/MM/DD HH:MM
+        '%Y/%m/%d',  # YYYY/MM/DD
+        '%m/%d/%Y %H:%M:%S',  # MM/DD/YYYY HH:MM:SS
+        '%m/%d/%Y %H:%M',  # MM/DD/YYYY HH:MM
+        '%m/%d/%Y',  # MM/DD/YYYY
+    ]
+    
+    for fmt in formats:
+        try:
+            return datetime.strptime(timestamp_str, fmt)
+        except ValueError:
+            continue
+    
+    raise ValueError(f"Unable to parse timestamp: {timestamp_str}. Supported formats: YYYY-MM-DD, YYYY-MM-DD HH:MM:SS, epoch seconds")
+
 @bot.event
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
@@ -145,7 +188,7 @@ async def on_reaction_add(reaction, user):
     if event_id:
         emoji_str = str(reaction.emoji)
         event_tracker.add_attendance(event_id, user.id, emoji_str)
-        print(f"Added attendance: User {user.name} ({user.id}) reacted with {emoji_str} to event {event_id}")
+        print(f"Added attendance: User {user.name} ({user.id}) reacted with {emoji_str} to event {event_id}")  # user.name is the account name
 
 @bot.event
 async def on_reaction_remove(reaction, user):
@@ -163,21 +206,34 @@ async def on_reaction_remove(reaction, user):
     if event_id:
         emoji_str = str(reaction.emoji)
         event_tracker.remove_attendance(event_id, user.id, emoji_str)
-        print(f"Removed attendance: User {user.name} ({user.id}) removed {emoji_str} from event {event_id}")
+        print(f"Removed attendance: User {user.name} ({user.id}) removed {emoji_str} from event {event_id}")  # user.name is the account name
 
 @bot.command(name='summary')
-async def generate_summary(ctx, start_date: str, end_date: str):
-    """Generate attendance summary for events in a date range"""
+async def generate_summary(ctx, start_timestamp: str, end_timestamp: str):
+    """Generate attendance summary for events in a date range
+    
+    Supports multiple timestamp formats:
+    - YYYY-MM-DD (date only)
+    - YYYY-MM-DD HH:MM:SS (full timestamp)
+    - YYYY-MM-DD HH:MM (date with time)
+    - YYYY/MM/DD (alternative date format)
+    - MM/DD/YYYY (US date format)
+    - Epoch timestamp (seconds since 1970-01-01)
+    """
     try:
-        # Parse dates
-        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
-        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)  # Include the end date
+        # Parse timestamps using the flexible parser
+        start_dt = parse_timestamp(start_timestamp)
+        end_dt = parse_timestamp(end_timestamp)
+        
+        # If only date was provided, extend end time to end of day
+        if len(end_timestamp.split()) == 1 and not end_timestamp.isdigit():
+            end_dt = end_dt.replace(hour=23, minute=59, second=59)
         
         # Get events in range
         events_in_range = event_tracker.get_events_in_range(start_dt, end_dt)
         
         if not events_in_range:
-            await ctx.send(f"No events found in the date range {start_date} to {end_date}")
+            await ctx.send(f"No events found in the date range {start_timestamp} to {end_timestamp}")
             return
         
         # Generate summary
@@ -189,7 +245,7 @@ async def generate_summary(ctx, start_date: str, end_date: str):
         # Create embed for display
         embed = discord.Embed(
             title="📊 Event Attendance Summary",
-            description=f"Events from {start_date} to {end_date}",
+            description=f"Events from {start_timestamp} to {end_timestamp}",
             color=discord.Color.blue()
         )
         
@@ -211,7 +267,7 @@ async def generate_summary(ctx, start_date: str, end_date: str):
             attendees_list = []
             for user_id, emojis in event['attendance_by_user'].items():
                 user = bot.get_user(int(user_id))
-                username = user.name if user else f"User {user_id}"
+                username = user.name if user else f"User {user_id}"  # user.name is the account name, not display name
                 attendees_list.append(f"{username}: {', '.join(emojis)}")
             
             embed.add_field(
@@ -235,7 +291,7 @@ async def generate_summary(ctx, start_date: str, end_date: str):
             await ctx.send(f"```json\n{summary_json}\n```")
             
     except ValueError as e:
-        await ctx.send(f"Invalid date format. Please use YYYY-MM-DD format. Error: {str(e)}")
+        await ctx.send(f"Invalid timestamp format. Error: {str(e)}")
     except Exception as e:
         await ctx.send(f"An error occurred while generating the summary: {str(e)}")
 
@@ -256,7 +312,7 @@ async def help_events(ctx):
     
     embed.add_field(
         name="Generate Summary",
-        value=f"`{BOT_PREFIX}summary YYYY-MM-DD YYYY-MM-DD`\nGenerates attendance summary for events in date range",
+        value=f"`{BOT_PREFIX}summary START_TIMESTAMP END_TIMESTAMP`\nGenerates attendance summary for events in time range\n\n**Supported timestamp formats:**\n• `YYYY-MM-DD` (date only)\n• `YYYY-MM-DD HH:MM:SS` (full timestamp)\n• `YYYY-MM-DD HH:MM` (date with time)\n• `YYYY/MM/DD` (alternative format)\n• `MM/DD/YYYY` (US format)\n• `1234567890` (epoch seconds)\n\n**Examples:**\n• `{BOT_PREFIX}summary 2024-01-01 2024-01-31`\n• `{BOT_PREFIX}summary 2024-01-01 09:00:00 2024-01-01 18:00:00`\n• `{BOT_PREFIX}summary 1704067200 1706745600`",
         inline=False
     )
     
