@@ -82,6 +82,118 @@ class EventTracker:
             summary['events'].append(event_summary)
         
         return summary
+    
+    async def reconstruct_from_history(self, bot):
+        """Reconstruct events from message history"""
+        print("🔄 Reconstructing events from message history...")
+        reconstructed_count = 0
+        
+        # Get all channels the bot can see
+        for guild in bot.guilds:
+            for channel in guild.channels:
+                if isinstance(channel, discord.TextChannel):
+                    try:
+                        # Check if this is a designated event channel or if we should scan all channels
+                        if EVENT_CHANNEL_ID and channel.id != EVENT_CHANNEL_ID:
+                            continue
+                        
+                        print(f"📖 Scanning channel: {channel.name} in {guild.name}")
+                        
+                        # Read message history (limit to last 1000 messages to avoid rate limits)
+                        async for message in channel.history(limit=1000):
+                            if await self._process_message_for_events(message):
+                                reconstructed_count += 1
+                                
+                    except discord.Forbidden:
+                        print(f"❌ No permission to read channel: {channel.name}")
+                    except Exception as e:
+                        print(f"⚠️ Error reading channel {channel.name}: {e}")
+        
+        print(f"✅ Reconstructed {reconstructed_count} events from message history")
+        return reconstructed_count
+    
+    async def _process_message_for_events(self, message):
+        """Process a single message to check if it's an event message"""
+        # Check if message has embeds (event messages use embeds)
+        if not message.embeds:
+            return False
+        
+        embed = message.embeds[0]
+        
+        # Check if this looks like an event message
+        if not embed.title or not embed.title.startswith("🎉 Event:"):
+            return False
+        
+        # Extract event name from title
+        event_name = embed.title.replace("🎉 Event: ", "")
+        
+        # Extract event ID from footer
+        event_id = None
+        if embed.footer and embed.footer.text:
+            footer_text = embed.footer.text
+            if footer_text.startswith("Event ID: "):
+                event_id = footer_text.replace("Event ID: ", "")
+        
+        if not event_id:
+            return False
+        
+        # Extract creator info from embed fields
+        creator_id = None
+        created_at = None
+        
+        for field in embed.fields:
+            if field.name == "Created by":
+                # Extract user ID from mention
+                creator_mention = field.value
+                if creator_mention.startswith("<@") and creator_mention.endswith(">"):
+                    creator_id = int(creator_mention[2:-1])
+            elif field.name == "Created at":
+                created_at = field.value
+        
+        # If we can't find creator info, skip this event
+        if not creator_id:
+            return False
+        
+        # Create event entry
+        event = {
+            'id': event_id,
+            'name': event_name,
+            'channel_id': message.channel.id,
+            'message_id': message.id,
+            'creator_id': creator_id,
+            'created_at': created_at or message.created_at.isoformat(),
+            'attendance': {}
+        }
+        
+        # Process reactions to get attendance
+        await self._process_reactions_for_event(event, message)
+        
+        # Store the event
+        self.events[event_id] = event
+        print(f"📝 Reconstructed event: {event_name} (ID: {event_id})")
+        return True
+    
+    async def _process_reactions_for_event(self, event, message):
+        """Process reactions on a message to reconstruct attendance"""
+        try:
+            # Get all reactions on the message
+            for reaction in message.reactions:
+                emoji_str = str(reaction.emoji)
+                
+                # Get users who reacted
+                async for user in reaction.users():
+                    if user.bot:
+                        continue  # Skip bot reactions
+                    
+                    # Add attendance record
+                    if user.id not in event['attendance']:
+                        event['attendance'][user.id] = (user.name, [])
+                    
+                    if emoji_str not in event['attendance'][user.id][1]:
+                        event['attendance'][user.id][1].append(emoji_str)
+                        
+        except Exception as e:
+            print(f"⚠️ Error processing reactions for event {event['name']}: {e}")
 
 # Initialize event tracker
 event_tracker = EventTracker()
@@ -133,6 +245,14 @@ def parse_timestamp(timestamp_str: str) -> datetime:
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
     print(f'Bot is in {len(bot.guilds)} guilds')
+    
+    # Reconstruct events from message history
+    try:
+        reconstructed_count = await event_tracker.reconstruct_from_history(bot)
+        print(f'🚀 Bot ready! Reconstructed {reconstructed_count} events from history.')
+    except Exception as e:
+        print(f'❌ Error during event reconstruction: {e}')
+        print('🚀 Bot ready! (Running without historical events)')
 
 @bot.command(name='create_event')
 async def create_event(ctx, *, event_name: str):
