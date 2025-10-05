@@ -34,22 +34,22 @@ class EventTracker:
         self.events[event_id] = event
         return event
     
-    def add_attendance(self, event_id: str, user_id: int, emoji: str) -> bool:
+    def add_attendance(self, event_id: str, user_id: int, user_name: str, emoji: str) -> bool:
         """Add attendance record for a user"""
         if event_id in self.events:
             if user_id not in self.events[event_id]['attendance']:
-                self.events[event_id]['attendance'][user_id] = []
-            if emoji not in self.events[event_id]['attendance'][user_id]:
-                self.events[event_id]['attendance'][user_id].append(emoji)
+                self.events[event_id]['attendance'][user_id] = (user_name, [])
+            if emoji not in self.events[event_id]['attendance'][user_id][1]:
+                self.events[event_id]['attendance'][user_id][1].append(emoji)
             return True
         return False
     
-    def remove_attendance(self, event_id: str, user_id: int, emoji: str) -> bool:
+    def remove_attendance(self, event_id: str, user_id: int, user_name: str, emoji: str) -> bool:
         """Remove attendance record for a user"""
         if event_id in self.events and user_id in self.events[event_id]['attendance']:
-            if emoji in self.events[event_id]['attendance'][user_id]:
-                self.events[event_id]['attendance'][user_id].remove(emoji)
-                if not self.events[event_id]['attendance'][user_id]:
+            if emoji in self.events[event_id]['attendance'][user_id][1]:
+                self.events[event_id]['attendance'][user_id][1].remove(emoji)
+                if not self.events[event_id]['attendance'][user_id][1]:
                     del self.events[event_id]['attendance'][user_id]
             return True
         return False
@@ -187,8 +187,8 @@ async def on_reaction_add(reaction, user):
     
     if event_id:
         emoji_str = str(reaction.emoji)
-        event_tracker.add_attendance(event_id, user.id, emoji_str)
-        print(f"Added attendance: User {user.name} ({user.id}) reacted with {emoji_str} to event {event_id}")  # user.name is the account name
+        event_tracker.add_attendance(event_id, user.id, user.name, emoji_str)
+        print(f"Added attendance: User {user.name} (display name: {user.display_name}) ({user.id}) reacted with {emoji_str} to event {event_id}")  # user.name is the account name
 
 @bot.event
 async def on_reaction_remove(reaction, user):
@@ -205,7 +205,7 @@ async def on_reaction_remove(reaction, user):
     
     if event_id:
         emoji_str = str(reaction.emoji)
-        event_tracker.remove_attendance(event_id, user.id, emoji_str)
+        event_tracker.remove_attendance(event_id, user.id, user.name, emoji_str)
         print(f"Removed attendance: User {user.name} ({user.id}) removed {emoji_str} from event {event_id}")  # user.name is the account name
 
 @bot.command(name='summary')
@@ -239,56 +239,30 @@ async def generate_summary(ctx, start_timestamp: str, end_timestamp: str):
         # Generate summary
         summary = event_tracker.generate_summary(events_in_range)
         
-        # Send summary as JSON (for programmatic use)
-        summary_json = json.dumps(summary, indent=2)
+        # Create simple text format
+        text_output = f"📊 Event Attendance Summary\n"
+        text_output += f"Events from {start_timestamp} to {end_timestamp}\n"
+        text_output += f"Total Events: {summary['total_events']}\n\n"
         
-        # Create embed for display
-        embed = discord.Embed(
-            title="📊 Event Attendance Summary",
-            description=f"Events from {start_timestamp} to {end_timestamp}",
-            color=discord.Color.blue()
-        )
-        
-        embed.add_field(
-            name="Total Events", 
-            value=str(summary['total_events']), 
-            inline=True
-        )
-        
-        total_attendees = sum(event['total_attendees'] for event in summary['events'])
-        embed.add_field(
-            name="Total Attendees", 
-            value=str(total_attendees), 
-            inline=True
-        )
-        
-        # Add event details
-        for event in summary['events'][:5]:  # Show first 5 events
+        # Add event details in simple format
+        for event in summary['events']:
             attendees_list = []
-            for user_id, emojis in event['attendance_by_user'].items():
-                user = bot.get_user(int(user_id))
-                username = user.name if user else f"User {user_id}"  # user.name is the account name, not display name
-                attendees_list.append(f"{username}: {', '.join(emojis)}")
+            for user_id, (user_name, emojis) in event['attendance_by_user'].items():
+                attendees_list.append(f"{user_name}")
             
-            embed.add_field(
-                name=f"🎉 {event['name']}",
-                value=f"Attendees: {event['total_attendees']}\n" + 
-                      ("\n".join(attendees_list[:3]) + ("..." if len(attendees_list) > 3 else "")),
-                inline=False
-            )
+            if attendees_list:
+                text_output += f"{event['name']}: {', '.join(attendees_list)}\n"
+            else:
+                text_output += f"{event['name']}: (no attendees)\n"
         
-        embed.set_footer(text=f"Generated at {summary['generated_at']}")
-        
-        await ctx.send(embed=embed)
-        
-        # Send raw JSON data for programmatic use
-        if len(summary_json) > 2000:
+        # Send the text output
+        if len(text_output) > 2000:
             # Split into multiple messages if too long
-            chunks = [summary_json[i:i+1900] for i in range(0, len(summary_json), 1900)]
-            for i, chunk in enumerate(chunks):
-                await ctx.send(f"```json\n{chunk}\n```")
+            chunks = [text_output[i:i+1900] for i in range(0, len(text_output), 1900)]
+            for chunk in chunks:
+                await ctx.send(f"```\n{chunk}\n```")
         else:
-            await ctx.send(f"```json\n{summary_json}\n```")
+            await ctx.send(f"```\n{text_output}\n```")
             
     except ValueError as e:
         await ctx.send(f"Invalid timestamp format. Error: {str(e)}")
