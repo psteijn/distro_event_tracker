@@ -9,7 +9,7 @@ DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 
 # Bot Settings
 BOT_PREFIX = '!'
-EVENT_CHANNEL_ID = None  # Set this to your specific channel ID
+EVENT_CHANNEL_ID = os.getenv('EVENT_CHANNEL_ID')
 DEFAULT_EMOJI = '✅'  # Default emoji for attendance
 
 # Database settings (for future SQLite implementation)

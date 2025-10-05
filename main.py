@@ -94,9 +94,41 @@ class EventTracker:
         
         return summary
     
+    def calculate_weighted_average(self, events: List[Dict]) -> str:
+        """Calculate weighted average of attendees across all events"""
+        if not events:
+            return "No events to analyze"
+        
+        # Count attendance for each user across all events
+        user_attendance_score = {}
+        total_events = len(events)
+        
+        for event in events:
+            for user_id, (user_name, emojis) in event['attendance_by_user'].items():
+                if user_name not in user_attendance_score:
+                    user_attendance_score[user_name] = 0
+                user_attendance_score[user_name] += 1
+        
+        if not user_attendance_score:
+            return "No attendees found"
+        
+        # Sort users by attendance count (descending)
+        sorted_users = sorted(user_attendance_score.items(), key=lambda x: x[1], reverse=True)
+        
+        # Calculate weighted average (attendance count / total events)
+        weighted_summary = []
+        for user_name, user_attendance_score in sorted_users:
+            weighted_summary.append(f"{user_name} ({user_attendance_score})")
+        
+        return f"ALL EVENTS: {', '.join(weighted_summary)}"  # Show top 5 attendees
+    
     async def reconstruct_from_history(self, bot):
         """Reconstruct events from message history"""
         print("🔄 Reconstructing events from message history...")
+        if EVENT_CHANNEL_ID:
+            print(f"📖 Scanning channel: {EVENT_CHANNEL_ID}")
+        else:
+            print("📖 Scanning all channels")
         reconstructed_count = 0
         
         # Get all channels the bot can see
@@ -105,7 +137,8 @@ class EventTracker:
                 if isinstance(channel, discord.TextChannel):
                     try:
                         # Check if this is a designated event channel or if we should scan all channels
-                        if EVENT_CHANNEL_ID and channel.id != EVENT_CHANNEL_ID:
+                        if EVENT_CHANNEL_ID and str(channel.id) != EVENT_CHANNEL_ID:
+                            print(f"Skipping channel: {channel.name} in {guild.name} due to EVENT_CHANNEL_ID ({channel.id}) != {EVENT_CHANNEL_ID}")
                             continue
                         
                         print(f"📖 Scanning channel: {channel.name} in {guild.name}")
@@ -415,6 +448,10 @@ async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None)
                 text_output += f"{event['name']}: {', '.join(attendees_list)}\n"
             else:
                 text_output += f"{event['name']}: (no attendees)\n"
+        
+        # Add weighted average summary
+        weighted_summary = event_tracker.calculate_weighted_average(summary['events'])
+        text_output += f"\n{weighted_summary}\n"
         
         # Send the text output
         if len(text_output) > 2000:
