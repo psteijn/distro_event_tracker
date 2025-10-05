@@ -24,8 +24,8 @@ class EventTracker:
     def __init__(self):
         self.events = {}
     
-    def create_event(self, event_id: str, name: str, channel_id: int, message_id: int, creator_id: int) -> Dict:
-        """Create a new event"""
+    def create_event(self, event_id: str, name: str, channel_id: int, message_id: int, creator_id: int, multiplier: float = 1.0) -> Dict:
+        """Create a new event with a multiplier for scoring"""
         event = {
             'id': event_id,
             'name': name,
@@ -33,6 +33,7 @@ class EventTracker:
             'message_id': message_id,
             'creator_id': creator_id,
             'created_at': get_pacific_now().isoformat(),
+            'multiplier': multiplier,
             'attendance': {}
         }
         self.events[event_id] = event
@@ -99,28 +100,29 @@ class EventTracker:
         if not events:
             return "No events to analyze"
         
-        # Count attendance for each user across all events
+        # Count attendance for each user across all events with multipliers
         user_attendance_score = {}
         total_events = len(events)
         
         for event in events:
+            multiplier = event.get('multiplier', 1.0)  # Default to 1.0 if no multiplier
             for user_id, (user_name, emojis) in event['attendance_by_user'].items():
                 if user_name not in user_attendance_score:
                     user_attendance_score[user_name] = 0
-                user_attendance_score[user_name] += 1
+                user_attendance_score[user_name] += multiplier
         
         if not user_attendance_score:
             return "No attendees found"
         
-        # Sort users by attendance count (descending)
+        # Sort users by attendance score (descending)
         sorted_users = sorted(user_attendance_score.items(), key=lambda x: x[1], reverse=True)
         
-        # Calculate weighted average (attendance count / total events)
+        # Calculate weighted average with multipliers
         weighted_summary = []
-        for user_name, user_attendance_score in sorted_users:
-            weighted_summary.append(f"{user_name} ({user_attendance_score})")
+        for user_name, score in sorted_users:
+            weighted_summary.append(f"{user_name} ({score:.1f})")
         
-        return f"ALL EVENTS: {', '.join(weighted_summary)}"  # Show top 5 attendees
+        return f"ALL EVENTS: {', '.join(weighted_summary)}"  # Show all attendees with scores
     
     async def reconstruct_from_history(self, bot):
         """Reconstruct events from message history"""
@@ -206,6 +208,7 @@ class EventTracker:
             'message_id': message.id,
             'creator_id': creator_id,
             'created_at': created_at or message.created_at.isoformat(),
+            'multiplier': 1.0,  # Default multiplier for reconstructed events
             'attendance': {}
         }
         
@@ -316,33 +319,34 @@ async def on_ready():
         print(f'❌ Error during event reconstruction: {e}')
         print('🚀 Bot ready! (Running without historical events)')
 
-@bot.command(name='create_event')
-async def create_event(ctx, *, event_name: str):
-    """Create a new event"""
-    if EVENT_CHANNEL_ID and ctx.channel.id != EVENT_CHANNEL_ID:
+async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, emoji: str, color: discord.Color):
+    """Helper function to create events with multipliers"""
+    if EVENT_CHANNEL_ID and str(ctx.channel.id) != EVENT_CHANNEL_ID:
         await ctx.send(f"Events can only be created in the designated event channel.")
         return
     
     # Generate unique event ID
     event_id = f"{ctx.message.id}_{int(get_pacific_now().timestamp())}"
     
-    # Create event
+    # Create event with multiplier
     event = event_tracker.create_event(
         event_id=event_id,
         name=event_name,
         channel_id=ctx.channel.id,
         message_id=ctx.message.id,
-        creator_id=ctx.author.id
+        creator_id=ctx.author.id,
+        multiplier=multiplier
     )
     
     # Send event message
     embed = discord.Embed(
-        title=f"🎉 Event: {event_name}",
+        title=f"{emoji} {event_name}",
         description=f"React with {DEFAULT_EMOJI} to register your attendance!",
-        color=discord.Color.green()
+        color=color
     )
     embed.add_field(name="Created by", value=ctx.author.mention, inline=True)
     embed.add_field(name="Created at", value=get_pacific_now().strftime('%Y-%m-%d %H:%M:%S %Z'), inline=True)
+    embed.add_field(name="Multiplier", value=f"{multiplier}x", inline=True)
     embed.set_footer(text=f"Event ID: {event_id}")
     
     event_message = await ctx.send(embed=embed)
@@ -353,6 +357,21 @@ async def create_event(ctx, *, event_name: str):
     # Update event with the actual message ID
     event['message_id'] = event_message.id
     event_tracker.events[event_id]['message_id'] = event_message.id
+
+@bot.command(name='dungeon')
+async def dungeon(ctx, *, dungeon_name: str):
+    """Create a new dungeon event (1x multiplier)"""
+    await create_event_with_multiplier(ctx, dungeon_name, 1.0, "🏰", discord.Color.blue())
+
+@bot.command(name='miniboss')
+async def miniboss(ctx, *, miniboss_name: str):
+    """Create a new miniboss event (1x multiplier)"""
+    await create_event_with_multiplier(ctx, miniboss_name, 1.0, "⚔️", discord.Color.orange())
+
+@bot.command(name='boss')
+async def boss(ctx, *, boss_name: str):
+    """Create a new boss event (2x multiplier)"""
+    await create_event_with_multiplier(ctx, boss_name, 2.0, "👹", discord.Color.red())
 
 @bot.event
 async def on_reaction_add(reaction, user):
@@ -477,8 +496,8 @@ async def help_events(ctx):
     )
     
     embed.add_field(
-        name="Create Event",
-        value=f"`{BOT_PREFIX}create_event Event Name`\nCreates a new event that users can react to",
+        name="Create Events",
+        value=f"`{BOT_PREFIX}dungeon Dungeon Name` - 🏰 Dungeon (1x multiplier)\n`{BOT_PREFIX}miniboss Miniboss Name` - ⚔️ Miniboss (1x multiplier)\n`{BOT_PREFIX}boss Boss Name` - 👹 Boss (2x multiplier)\n\nCreates events with different multipliers that affect scoring",
         inline=False
     )
     
