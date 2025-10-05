@@ -5,7 +5,11 @@ from datetime import datetime, timedelta
 import json
 import os
 from typing import Dict, List, Optional
+import pytz
 from config import DISCORD_TOKEN, BOT_PREFIX, EVENT_CHANNEL_ID, DEFAULT_EMOJI
+
+# Pacific timezone (handles daylight savings automatically)
+PACIFIC_TZ = pytz.timezone('US/Pacific')
 
 # Bot setup
 intents = discord.Intents.default()
@@ -28,7 +32,7 @@ class EventTracker:
             'channel_id': channel_id,
             'message_id': message_id,
             'creator_id': creator_id,
-            'created_at': datetime.now().isoformat(),
+            'created_at': get_pacific_now().isoformat(),
             'attendance': {}
         }
         self.events[event_id] = event
@@ -59,6 +63,13 @@ class EventTracker:
         filtered_events = []
         for event in self.events.values():
             event_date = datetime.fromisoformat(event['created_at'])
+            
+            # Ensure event_date is timezone-aware (Pacific timezone)
+            if event_date.tzinfo is None:
+                event_date = PACIFIC_TZ.localize(event_date)
+            elif event_date.tzinfo != PACIFIC_TZ:
+                event_date = event_date.astimezone(PACIFIC_TZ)
+            
             if start_date <= event_date <= end_date:
                 filtered_events.append(event)
         return filtered_events
@@ -66,7 +77,7 @@ class EventTracker:
     def generate_summary(self, events: List[Dict]) -> Dict:
         """Generate attendance summary for events"""
         summary = {
-            'generated_at': datetime.now().isoformat(),
+            'generated_at': get_pacific_now().isoformat(),
             'total_events': len(events),
             'events': []
         }
@@ -199,26 +210,38 @@ class EventTracker:
 event_tracker = EventTracker()
 
 def parse_timestamp(timestamp_str: str) -> datetime:
-    """Parse various timestamp formats into datetime object"""
+    """Parse various timestamp formats into datetime object in Pacific timezone"""
     timestamp_str = timestamp_str.strip()
+    
+    # Remove quotes if present
+    if timestamp_str.startswith('"') and timestamp_str.endswith('"'):
+        timestamp_str = timestamp_str[1:-1]
+    elif timestamp_str.startswith("'") and timestamp_str.endswith("'"):
+        timestamp_str = timestamp_str[1:-1]
     
     # Try epoch timestamp first (numeric)
     if timestamp_str.isdigit():
         try:
             epoch_seconds = int(timestamp_str)
-            return datetime.fromtimestamp(epoch_seconds)
+            # Convert epoch to Pacific timezone
+            utc_dt = datetime.fromtimestamp(epoch_seconds, tz=pytz.UTC)
+            return utc_dt.astimezone(PACIFIC_TZ)
         except (ValueError, OSError):
             pass
     
     # Try full timestamp format: YYYY-MM-DD HH:MM:SS
     try:
-        return datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+        dt = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+        # Localize to Pacific timezone
+        return PACIFIC_TZ.localize(dt)
     except ValueError:
         pass
     
     # Try date only format: YYYY-MM-DD
     try:
-        return datetime.strptime(timestamp_str, '%Y-%m-%d')
+        dt = datetime.strptime(timestamp_str, '%Y-%m-%d')
+        # Localize to Pacific timezone
+        return PACIFIC_TZ.localize(dt)
     except ValueError:
         pass
     
@@ -235,11 +258,17 @@ def parse_timestamp(timestamp_str: str) -> datetime:
     
     for fmt in formats:
         try:
-            return datetime.strptime(timestamp_str, fmt)
+            dt = datetime.strptime(timestamp_str, fmt)
+            # Localize to Pacific timezone
+            return PACIFIC_TZ.localize(dt)
         except ValueError:
             continue
     
     raise ValueError(f"Unable to parse timestamp: {timestamp_str}. Supported formats: YYYY-MM-DD, YYYY-MM-DD HH:MM:SS, epoch seconds")
+
+def get_pacific_now() -> datetime:
+    """Get current time in Pacific timezone"""
+    return datetime.now(PACIFIC_TZ)
 
 @bot.event
 async def on_ready():
@@ -262,7 +291,7 @@ async def create_event(ctx, *, event_name: str):
         return
     
     # Generate unique event ID
-    event_id = f"{ctx.message.id}_{int(datetime.now().timestamp())}"
+    event_id = f"{ctx.message.id}_{int(get_pacific_now().timestamp())}"
     
     # Create event
     event = event_tracker.create_event(
@@ -280,7 +309,7 @@ async def create_event(ctx, *, event_name: str):
         color=discord.Color.green()
     )
     embed.add_field(name="Created by", value=ctx.author.mention, inline=True)
-    embed.add_field(name="Created at", value=datetime.now().strftime('%Y-%m-%d %H:%M:%S'), inline=True)
+    embed.add_field(name="Created at", value=get_pacific_now().strftime('%Y-%m-%d %H:%M:%S %Z'), inline=True)
     embed.set_footer(text=f"Event ID: {event_id}")
     
     event_message = await ctx.send(embed=embed)
@@ -348,7 +377,7 @@ async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None)
         
         # Parse end timestamp or set to current time if not provided
         if end_timestamp is None:
-            end_dt = datetime.now()
+            end_dt = get_pacific_now()
         else:
             end_dt = parse_timestamp(end_timestamp)
             # If only date was provided, extend end time to end of day
