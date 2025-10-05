@@ -209,7 +209,7 @@ async def on_reaction_remove(reaction, user):
         print(f"Removed attendance: User {user.name} ({user.id}) removed {emoji_str} from event {event_id}")  # user.name is the account name
 
 @bot.command(name='summary')
-async def generate_summary(ctx, start_timestamp: str, end_timestamp: str):
+async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None):
     """Generate attendance summary for events in a date range
     
     Supports multiple timestamp formats:
@@ -219,21 +219,30 @@ async def generate_summary(ctx, start_timestamp: str, end_timestamp: str):
     - YYYY/MM/DD (alternative date format)
     - MM/DD/YYYY (US date format)
     - Epoch timestamp (seconds since 1970-01-01)
+    
+    If only one timestamp is provided, fetches all events after that timestamp.
     """
     try:
-        # Parse timestamps using the flexible parser
+        # Parse start timestamp
         start_dt = parse_timestamp(start_timestamp)
-        end_dt = parse_timestamp(end_timestamp)
         
-        # If only date was provided, extend end time to end of day
-        if len(end_timestamp.split()) == 1 and not end_timestamp.isdigit():
-            end_dt = end_dt.replace(hour=23, minute=59, second=59)
+        # Parse end timestamp or set to current time if not provided
+        if end_timestamp is None:
+            end_dt = datetime.now()
+        else:
+            end_dt = parse_timestamp(end_timestamp)
+            # If only date was provided, extend end time to end of day
+            if len(end_timestamp.split()) == 1 and not end_timestamp.isdigit():
+                end_dt = end_dt.replace(hour=23, minute=59, second=59)
         
         # Get events in range
         events_in_range = event_tracker.get_events_in_range(start_dt, end_dt)
         
         if not events_in_range:
-            await ctx.send(f"No events found in the date range {start_timestamp} to {end_timestamp}")
+            if end_timestamp is None:
+                await ctx.send(f"No events found after {start_timestamp}")
+            else:
+                await ctx.send(f"No events found in the date range {start_timestamp} to {end_timestamp}")
             return
         
         # Generate summary
@@ -241,7 +250,10 @@ async def generate_summary(ctx, start_timestamp: str, end_timestamp: str):
         
         # Create simple text format
         text_output = f"📊 Event Attendance Summary\n"
-        text_output += f"Events from {start_timestamp} to {end_timestamp}\n"
+        if end_timestamp is None:
+            text_output += f"Events after {start_timestamp}\n"
+        else:
+            text_output += f"Events from {start_timestamp} to {end_timestamp}\n"
         text_output += f"Total Events: {summary['total_events']}\n\n"
         
         # Add event details in simple format
@@ -286,7 +298,7 @@ async def help_events(ctx):
     
     embed.add_field(
         name="Generate Summary",
-        value=f"`{BOT_PREFIX}summary START_TIMESTAMP END_TIMESTAMP`\nGenerates attendance summary for events in time range\n\n**Supported timestamp formats:**\n• `YYYY-MM-DD` (date only)\n• `YYYY-MM-DD HH:MM:SS` (full timestamp)\n• `YYYY-MM-DD HH:MM` (date with time)\n• `YYYY/MM/DD` (alternative format)\n• `MM/DD/YYYY` (US format)\n• `1234567890` (epoch seconds)\n\n**Examples:**\n• `{BOT_PREFIX}summary 2024-01-01 2024-01-31`\n• `{BOT_PREFIX}summary 2024-01-01 09:00:00 2024-01-01 18:00:00`\n• `{BOT_PREFIX}summary 1704067200 1706745600`",
+        value=f"`{BOT_PREFIX}summary START_TIMESTAMP [END_TIMESTAMP]`\nGenerates attendance summary for events in time range\n\n**Supported timestamp formats:**\n• `YYYY-MM-DD` (date only)\n• `YYYY-MM-DD HH:MM:SS` (full timestamp)\n• `YYYY-MM-DD HH:MM` (date with time)\n• `YYYY/MM/DD` (alternative format)\n• `MM/DD/YYYY` (US format)\n• `1234567890` (epoch seconds)\n\n**Examples:**\n• `{BOT_PREFIX}summary 2024-01-01` (all events after Jan 1)\n• `{BOT_PREFIX}summary 2024-01-01 2024-01-31` (events in January)\n• `{BOT_PREFIX}summary 2024-01-01 09:00:00 2024-01-01 18:00:00` (events on Jan 1, 9am-6pm)\n• `{BOT_PREFIX}summary 1704067200` (all events after epoch timestamp)",
         inline=False
     )
     
