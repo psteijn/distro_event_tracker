@@ -32,7 +32,7 @@ class EventTracker:
             'channel_id': channel_id,
             'message_id': message_id,
             'creator_id': creator_id,
-            'created_at': get_pacific_now().isoformat(),
+            'created_at': get_pacific_now().timestamp(),
             'multiplier': multiplier,
             'attendance': {}
         }
@@ -59,19 +59,13 @@ class EventTracker:
             return True
         return False
     
-    def get_events_in_range(self, start_date: datetime, end_date: datetime) -> List[Dict]:
+    def get_events_in_range(self, start_timestamp_sec: int, end_timestamp_sec: int) -> List[Dict]:
         """Get all events within a date range"""
         filtered_events = []
         for event in self.events.values():
-            event_date = datetime.fromisoformat(event['created_at'])
+            event_timestamp_sec = event['created_at']
             
-            # Ensure event_date is timezone-aware (Pacific timezone)
-            if event_date.tzinfo is None:
-                event_date = PACIFIC_TZ.localize(event_date)
-            elif event_date.tzinfo != PACIFIC_TZ:
-                event_date = event_date.astimezone(PACIFIC_TZ)
-            
-            if start_date <= event_date <= end_date:
+            if start_timestamp_sec <= event_timestamp_sec <= end_timestamp_sec:
                 filtered_events.append(event)
         return filtered_events
     
@@ -87,6 +81,7 @@ class EventTracker:
             event_summary = {
                 'id': event['id'],
                 'name': event['name'],
+                'multiplier': event['multiplier'],
                 'created_at': event['created_at'],
                 'total_attendees': len(event['attendance']),
                 'attendance_by_user': event['attendance']
@@ -185,7 +180,6 @@ class EventTracker:
         
         # Extract creator info and multiplier from embed fields
         creator_id = None
-        created_at = None
         embed_multiplier = multiplier  # Default to detected multiplier
         
         for field in embed.fields:
@@ -194,8 +188,6 @@ class EventTracker:
                 creator_mention = field.value
                 if creator_mention.startswith("<@") and creator_mention.endswith(">"):
                     creator_id = int(creator_mention[2:-1])
-            elif field.name == "Created at":
-                created_at = field.value
             elif field.name == "Multiplier":
                 # Extract multiplier from embed field
                 multiplier_text = field.value
@@ -209,6 +201,9 @@ class EventTracker:
         if not creator_id:
             return False
         
+        # Extract timestamp from event_id (format: message_id_timestamp)
+        created_at_timestamp = message.created_at.timestamp()
+        
         # Create event entry
         event = {
             'id': event_id,
@@ -216,7 +211,7 @@ class EventTracker:
             'channel_id': message.channel.id,
             'message_id': message.id,
             'creator_id': creator_id,
-            'created_at': created_at or message.created_at.isoformat(),
+            'created_at': created_at_timestamp,
             'multiplier': embed_multiplier,
             'attendance': {}
         }
@@ -354,7 +349,6 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
         color=color
     )
     embed.add_field(name="Created by", value=ctx.author.mention, inline=True)
-    embed.add_field(name="Created at", value=get_pacific_now().strftime('%Y-%m-%d %H:%M:%S %Z'), inline=True)
     embed.add_field(name="Multiplier", value=f"{multiplier}x", inline=True)
     embed.set_footer(text=f"Event ID: {event_id}")
     
@@ -434,7 +428,7 @@ async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None)
     """
     try:
         # Parse start timestamp
-        start_dt = parse_timestamp(start_timestamp)
+        start_timestamp_sec = parse_timestamp(start_timestamp).timestamp()
         
         # Parse end timestamp or set to current time if not provided
         if end_timestamp is None:
@@ -444,9 +438,10 @@ async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None)
             # If only date was provided, extend end time to end of day
             if len(end_timestamp.split()) == 1 and not end_timestamp.isdigit():
                 end_dt = end_dt.replace(hour=23, minute=59, second=59)
+        end_timestamp_sec = end_dt.timestamp()
         
         # Get events in range
-        events_in_range = event_tracker.get_events_in_range(start_dt, end_dt)
+        events_in_range = event_tracker.get_events_in_range(start_timestamp_sec, end_timestamp_sec)
         
         if not events_in_range:
             if end_timestamp is None:
