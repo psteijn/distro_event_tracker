@@ -218,6 +218,12 @@ class EventTracker:
         
         # Process reactions to get attendance
         await self._process_reactions_for_event(event, message)
+
+        # Process manual attendance
+        for field in message.embeds[0].fields:
+            if field.name == "Manual Attendance":
+                for user in field.value.split(', '):
+                    print(f"TODO: process manual attendance for {user}")
         
         # Store the event
         self.events[event_id] = event
@@ -310,6 +316,36 @@ def get_pacific_now() -> datetime:
     """Get current time in Pacific timezone"""
     return datetime.now(PACIFIC_TZ)
 
+def parse_user_names_from_args(args: str, guild) -> List[tuple]:
+    """Parse user names from command arguments to extract user info
+    
+    Returns list of tuples: (user_id, user_name, emoji)
+    """
+    import re
+    attendance_list = []
+    
+    # Split arguments by spaces, but handle quoted names
+    # Simple approach: split by spaces and process each word
+    words = args.strip().split()
+    print(f"Words: {words}")
+    
+    for word in words:
+        word = word.strip()
+        if not word:
+            continue
+
+        # Look for users by display name or username
+        for member in guild.members:
+            print(f"Member: {member.name} {member.display_name}")
+            if (word.lower() == member.name.lower() or 
+                word.lower() == member.display_name.lower() or
+                word in member.display_name or
+                word in member.name):
+                attendance_list.append((member.id, member.name, "✅"))
+                break  # Only match the first user found
+    
+    return attendance_list
+
 @bot.event
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
@@ -375,6 +411,69 @@ async def miniboss(ctx, *, miniboss_name: str):
 async def boss(ctx, *, boss_name: str):
     """Create a new boss event (2x multiplier)"""
     await create_event_with_multiplier(ctx, boss_name, 2.0, "👹", discord.Color.red())
+
+@bot.command(name='add_users')
+async def add_users(ctx, event_id: str, *, user_names: str):
+    """Add users to an event by event_id
+    
+    Usage: !add_users EVENT_ID user1 user2 @user3 DisplayName
+    Supports both usernames and mentions
+    """
+    # function not actually implemented yet. we don't have the right permission to view members.
+    await ctx.send(f"NYI - can't view members list.")
+    return
+
+    try:
+        # Check if event exists
+        if event_id not in event_tracker.events:
+            await ctx.send(f"❌ Event with ID `{event_id}` not found.")
+            return
+        
+        event = event_tracker.events[event_id]
+        
+        # Parse user names from arguments
+        users = parse_user_names_from_args(user_names, ctx.guild)
+        
+        if not users:
+            await ctx.send(f"❌ No valid users found in the provided names [{','.join(user_names.split(' '))}].")
+            return
+
+        # Update the original event message to show the new attendance
+        try:
+            channel = bot.get_channel(event['channel_id'])
+            if not channel:
+                await ctx.send(f"❌ Channel with ID `{event['channel_id']}` not found.")
+                return
+
+            event_message = await channel.fetch_message(event['message_id'])
+            
+            # Create updated embed
+            embed = event_message.embeds[0]
+
+            found_existing_field = False
+            for field in embed.fields:
+                if field.name == "Manual Attendance":
+                    field.value = f"{field.value}\n{', '.join([user[1] for user in users])}"
+                    found_existing_field = True
+                    break
+            if not found_existing_field:
+                embed.add_field(name="Manual Attendance", value=f"{', '.join([user[1] for user in users])}", inline=False)
+
+            # Update the embed
+            await event_message.edit(embed=embed)
+
+            # Send confirmation
+            await ctx.send(f"✅ Successfully added {len(users)} user(s) to event: {', '.join(users)}")
+            print(f"Added users to event {event_id}: {', '.join(users)} by {ctx.author.name}")
+                
+        except Exception as e:
+            # Error updating the event message
+            await ctx.send(f"❌ An error occurred while adding users: {str(e)}")
+            print(f"Error in add_users command: {e}")
+            
+    except Exception as e:
+        await ctx.send(f"❌ An error occurred while adding users: {str(e)}")
+        print(f"Error in add_users command: {e}")
 
 @bot.event
 async def on_reaction_add(reaction, user):
@@ -511,6 +610,12 @@ async def help_events(ctx):
         inline=False
     )
     
+    embed.add_field(
+        name="Add Users to Event",
+        value=f"`{BOT_PREFIX}add_users EVENT_ID user1 user2 @user3 DisplayName`\nManually add users to an existing event\n\n**Examples:**\n• `{BOT_PREFIX}add_users 1234567890_1234567890 alice bob`\n• `{BOT_PREFIX}add_users 1234567890_1234567890 @alice @bob`\n• `{BOT_PREFIX}add_users 1234567890_1234567890 Alice Bob @charlie`\n\nSupports both usernames and mentions. Updates the original event message.",
+        inline=False
+    )
+
     embed.add_field(
         name="Help",
         value=f"`{BOT_PREFIX}help_events`\nShows this help message",
