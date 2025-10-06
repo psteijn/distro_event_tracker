@@ -127,34 +127,17 @@ class EventTracker:
     async def reconstruct_from_history(self, bot):
         """Reconstruct events from message history"""
         print("🔄 Reconstructing events from message history...")
-        if EVENT_CHANNEL_ID:
-            print(f"📖 Scanning channel: {EVENT_CHANNEL_ID}")
-        else:
-            print("📖 Scanning all channels")
         reconstructed_count = 0
         
-        # Get all channels the bot can see
-        for guild in bot.guilds:
-            for channel in guild.channels:
-                if isinstance(channel, discord.TextChannel):
-                    try:
-                        # Check if this is a designated event channel or if we should scan all channels
-                        if EVENT_CHANNEL_ID and str(channel.id) != EVENT_CHANNEL_ID:
-                            print(f"Skipping channel: {channel.name} in {guild.name} due to EVENT_CHANNEL_ID ({channel.id}) != {EVENT_CHANNEL_ID}")
-                            continue
-                        
-                        print(f"📖 Scanning channel: {channel.name} in {guild.name}")
-                        
-                        # Read message history (limit to last 1000 messages to avoid rate limits)
-                        async for message in channel.history(limit=1000):
-                            if await self._process_message_for_events(message):
-                                reconstructed_count += 1
-                                
-                    except discord.Forbidden:
-                        print(f"❌ No permission to read channel: {channel.name}")
-                    except Exception as e:
-                        print(f"⚠️ Error reading channel {channel.name}: {e}")
-        
+        channel = bot.get_channel(int(EVENT_CHANNEL_ID))
+        if channel:
+            print(f"📖 Scanning channel: {channel.name}")
+            async for message in channel.history(limit=1000):
+                if await self._process_message_for_events(message):
+                    reconstructed_count += 1
+        else:
+            print(f"❌ Channel {EVENT_CHANNEL_ID} not found")
+
         print(f"✅ Reconstructed {reconstructed_count} events from message history")
         return reconstructed_count
     
@@ -166,12 +149,29 @@ class EventTracker:
         
         embed = message.embeds[0]
         
-        # Check if this looks like an event message
-        if not embed.title or not embed.title.startswith("🎉 Event:"):
+        # Check if this looks like one of the new event types
+        if not embed.title:
             return False
         
-        # Extract event name from title
-        event_name = embed.title.replace("🎉 Event: ", "")
+        # Detect event type and extract name
+        event_name = None
+        multiplier = 1.0
+        
+        if embed.title.startswith("🏰 "):
+            # Dungeon event
+            event_name = embed.title.replace("🏰 ", "")
+            multiplier = 1.0
+        elif embed.title.startswith("⚔️ "):
+            # Miniboss event
+            event_name = embed.title.replace("⚔️ ", "")
+            multiplier = 1.0
+        elif embed.title.startswith("👹 "):
+            # Boss event
+            event_name = embed.title.replace("👹 ", "")
+            multiplier = 2.0
+        else:
+            # Not a recognized event type
+            return False
         
         # Extract event ID from footer
         event_id = None
@@ -183,9 +183,10 @@ class EventTracker:
         if not event_id:
             return False
         
-        # Extract creator info from embed fields
+        # Extract creator info and multiplier from embed fields
         creator_id = None
         created_at = None
+        embed_multiplier = multiplier  # Default to detected multiplier
         
         for field in embed.fields:
             if field.name == "Created by":
@@ -195,6 +196,14 @@ class EventTracker:
                     creator_id = int(creator_mention[2:-1])
             elif field.name == "Created at":
                 created_at = field.value
+            elif field.name == "Multiplier":
+                # Extract multiplier from embed field
+                multiplier_text = field.value
+                if multiplier_text.endswith("x"):
+                    try:
+                        embed_multiplier = float(multiplier_text[:-1])
+                    except ValueError:
+                        embed_multiplier = multiplier  # Fallback to detected multiplier
         
         # If we can't find creator info, skip this event
         if not creator_id:
@@ -208,7 +217,7 @@ class EventTracker:
             'message_id': message.id,
             'creator_id': creator_id,
             'created_at': created_at or message.created_at.isoformat(),
-            'multiplier': 1.0,  # Default multiplier for reconstructed events
+            'multiplier': embed_multiplier,
             'attendance': {}
         }
         
@@ -217,7 +226,7 @@ class EventTracker:
         
         # Store the event
         self.events[event_id] = event
-        print(f"📝 Reconstructed event: {event_name} (ID: {event_id})")
+        print(f"📝 Reconstructed event: {event_name} (ID: {event_id}, multiplier: {embed_multiplier}x, attendance: {[user[0] for user in event['attendance'].values()]})")
         return True
     
     async def _process_reactions_for_event(self, event, message):
