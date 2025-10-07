@@ -6,7 +6,7 @@ import json
 import os
 from typing import Dict, List, Optional
 import pytz
-from config import DISCORD_TOKEN, BOT_PREFIX, EVENT_CHANNEL_ID, DEFAULT_EMOJI, EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE
+from config import DISCORD_TOKEN, BOT_PREFIX, EVENT_CHANNEL_ID, EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE
 
 # Pacific timezone (handles daylight savings automatically)
 PACIFIC_TZ = pytz.timezone('US/Pacific')
@@ -34,7 +34,8 @@ class EventTracker:
             'creator_id': creator_id,
             'created_at': get_pacific_now().timestamp(),
             'multiplier': multiplier,
-            'attendance': {}
+            'attendance': {},
+            'manual_attendance': []
         }
         self.events[event_id] = event
         return event
@@ -78,6 +79,10 @@ class EventTracker:
         }
         
         for event in events:
+            # Ensure manual_attendance key exists (defensive coding for existing events)
+            if 'manual_attendance' not in event:
+                event['manual_attendance'] = []
+            
             total_attendees = len(event['attendance']) + len(event['manual_attendance'])
             attendance_by_user = event['attendance']
             for user in event['manual_attendance']:

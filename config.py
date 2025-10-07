@@ -10,7 +10,6 @@ DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 # Bot Settings
 BOT_PREFIX = '!'
 EVENT_CHANNEL_ID = os.getenv('EVENT_CHANNEL_ID')
-DEFAULT_EMOJI = 'wizard'  # Default emoji for attendance
 EMOJI_HUNDRED = 'share_100'
 EMOJI_SEVENTY_FIVE = 'share_75'
 EMOJI_FIFTY = 'share_50'
