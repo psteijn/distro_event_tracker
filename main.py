@@ -6,7 +6,7 @@ import json
 import os
 from typing import Dict, List, Optional
 import pytz
-from config import DISCORD_TOKEN, BOT_PREFIX, EVENT_CHANNEL_ID, DEFAULT_EMOJI
+from config import DISCORD_TOKEN, BOT_PREFIX, EVENT_CHANNEL_ID, DEFAULT_EMOJI, EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE
 
 # Pacific timezone (handles daylight savings automatically)
 PACIFIC_TZ = pytz.timezone('US/Pacific')
@@ -90,7 +90,7 @@ class EventTracker:
                 'multiplier': event['multiplier'],
                 'created_at': event['created_at'],
                 'total_attendees': len(event['attendance']) + len(event['manual_attendance']),
-                'attendance_by_user': event['attendance']
+                'attendance_by_user': attendance_by_user
             }
             summary['events'].append(event_summary)
         
@@ -106,11 +106,38 @@ class EventTracker:
         total_events = len(events)
         
         for event in events:
+            print(f"Processing event: {event['name']}")
             multiplier = event.get('multiplier', 1.0)  # Default to 1.0 if no multiplier
             for user_id, (user_name, emojis) in event['attendance_by_user'].items():
+                participation_multiplier = 0.0
                 if user_name not in user_attendance_score:
                     user_attendance_score[user_name] = 0
-                user_attendance_score[user_name] += multiplier
+                for emoji in emojis:
+                    print(f"Processing emoji: {emoji} for user: {user_name}")
+                    
+                    # Extract emoji name from Discord emoji string (format: <:name:id> or just the emoji name)
+                    emoji_name = None
+                    if emoji.startswith('<:') and emoji.endswith('>'):
+                        # Custom emoji format: <:share_100:1234567890>
+                        emoji_name = emoji.split(':')[1]
+                    else:
+                        # Unicode emoji or already just the name
+                        emoji_name = emoji
+                    
+                    print(f"Extracted emoji name: {emoji_name}")
+                    
+                    if emoji_name == EMOJI_HUNDRED:
+                        participation_multiplier = 1.0
+                    elif emoji_name == EMOJI_SEVENTY_FIVE:
+                        participation_multiplier = max(participation_multiplier, 0.75)
+                    elif emoji_name == EMOJI_FIFTY:
+                        participation_multiplier = max(participation_multiplier, 0.5)
+                    elif emoji_name == EMOJI_TWENTY_FIVE:
+                        participation_multiplier = max(participation_multiplier, 0.25)
+                    else:
+                        participation_multiplier = 1.0  # All other emojis count as full attendance! Beetle wants to ban people on this.
+                print(f"Participation multiplier: {participation_multiplier} for user: {user_name}")
+                user_attendance_score[user_name] += multiplier * participation_multiplier
         
         if not user_attendance_score:
             return "No attendees found"
@@ -121,7 +148,7 @@ class EventTracker:
         # Calculate weighted average with multipliers
         weighted_summary = []
         for user_name, score in sorted_users:
-            weighted_summary.append(f"{user_name} ({score:.1f})")
+            weighted_summary.append(f"{user_name} ({score:.2f})")
         
         return f"ALL EVENTS: {', '.join(weighted_summary)}"  # Show all attendees with scores
     
@@ -357,9 +384,13 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     )
     
     # Send event message
+    hundred_emoji = discord.utils.get(ctx.guild.emojis, name=f"{EMOJI_HUNDRED}")
+    seventy_five_emoji = discord.utils.get(ctx.guild.emojis, name=f"{EMOJI_SEVENTY_FIVE}")
+    fifty_emoji = discord.utils.get(ctx.guild.emojis, name=f"{EMOJI_FIFTY}")
+    twenty_five_emoji = discord.utils.get(ctx.guild.emojis, name=f"{EMOJI_TWENTY_FIVE}")
     embed = discord.Embed(
         title=f"{emoji} {event_name}",
-        description=f"React with {DEFAULT_EMOJI} to register your attendance!",
+        description=f"React with {hundred_emoji} {seventy_five_emoji} {fifty_emoji} {twenty_five_emoji} to register your attendance!\n{hundred_emoji} is full attendance, the others are partial attendance. ",
         color=color
     )
     embed.add_field(name="Created by", value=ctx.author.mention, inline=True)
@@ -367,9 +398,11 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     embed.set_footer(text=f"Event ID: {event_id}")
     
     event_message = await ctx.send(embed=embed)
-    
-    # Add default emoji reaction
-    await event_message.add_reaction(DEFAULT_EMOJI)
+
+    await event_message.add_reaction(hundred_emoji)
+    await event_message.add_reaction(seventy_five_emoji)
+    await event_message.add_reaction(fifty_emoji)
+    await event_message.add_reaction(twenty_five_emoji)
     
     # Update event with the actual message ID
     event['message_id'] = event_message.id
