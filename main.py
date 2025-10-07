@@ -606,9 +606,13 @@ async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None)
             else:
                 text_output += f"{event['name']}: (no attendees)\n"
         
+        # Add event names line
+        event_names = [event['name'] for event in summary['events']]
+        text_output += f"Events: {', '.join(event_names)}\n"
+        
         # Add weighted average summary
         weighted_summary = event_tracker.calculate_weighted_average(summary['events'])
-        text_output += f"\n{weighted_summary}\n"
+        text_output += f"{weighted_summary}\n"
         
         # Send the text output
         if len(text_output) > 2000:
