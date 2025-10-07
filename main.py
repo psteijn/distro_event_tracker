@@ -594,7 +594,7 @@ async def help_events(ctx):
     
     embed.add_field(
         name="Add Users to Event",
-        value=f"`{BOT_PREFIX}add_users EVENT_ID user1 user2 @user3 DisplayName`\nManually add users to an existing event\n\n**Examples:**\n• `{BOT_PREFIX}add_users 1234567890_1234567890 alice bob`\n• `{BOT_PREFIX}add_users 1234567890_1234567890 @alice @bob`\n• `{BOT_PREFIX}add_users 1234567890_1234567890 Alice Bob @charlie`\n\nSupports both usernames and mentions. Updates the original event message.",
+        value=f"`{BOT_PREFIX}add_users EVENT_ID @user1 @user2 @user3`\nManually add users to an existing event\n\n**Examples:**\n• `{BOT_PREFIX}add_users 1234567890_1234567890 @alice @bob`\n\nOnly supports mentions. Updates the original event message.",
         inline=False
     )
 
