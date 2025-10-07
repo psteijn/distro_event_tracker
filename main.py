@@ -78,12 +78,18 @@ class EventTracker:
         }
         
         for event in events:
+            total_attendees = len(event['attendance']) + len(event['manual_attendance'])
+            attendance_by_user = event['attendance']
+            for user in event['manual_attendance']:
+                if user not in attendance_by_user:
+                    attendance_by_user[user] = (user, [])
+
             event_summary = {
                 'id': event['id'],
                 'name': event['name'],
                 'multiplier': event['multiplier'],
                 'created_at': event['created_at'],
-                'total_attendees': len(event['attendance']),
+                'total_attendees': len(event['attendance']) + len(event['manual_attendance']),
                 'attendance_by_user': event['attendance']
             }
             summary['events'].append(event_summary)
@@ -182,6 +188,7 @@ class EventTracker:
         creator_id = None
         embed_multiplier = multiplier  # Default to detected multiplier
         
+        manual_attendance_users = []
         for field in embed.fields:
             if field.name == "Created by":
                 # Extract user ID from mention
@@ -196,6 +203,11 @@ class EventTracker:
                         embed_multiplier = float(multiplier_text[:-1])
                     except ValueError:
                         embed_multiplier = multiplier  # Fallback to detected multiplier
+            elif field.name == "Manual Attendance":
+                # Extract manual attendance from embed field
+                manual_attendance = field.value
+                for user in manual_attendance.split(', '):
+                    manual_attendance_users.append(user)
         
         # If we can't find creator info, skip this event
         if not creator_id:
@@ -213,21 +225,17 @@ class EventTracker:
             'creator_id': creator_id,
             'created_at': created_at_timestamp,
             'multiplier': embed_multiplier,
-            'attendance': {}
+            'attendance': {},
+            'manual_attendance': manual_attendance_users
         }
         
         # Process reactions to get attendance
         await self._process_reactions_for_event(event, message)
-
-        # Process manual attendance
-        for field in message.embeds[0].fields:
-            if field.name == "Manual Attendance":
-                for user in field.value.split(', '):
-                    print(f"TODO: process manual attendance for {user}")
         
         # Store the event
         self.events[event_id] = event
-        print(f"📝 Reconstructed event: {event_name} (ID: {event_id}, multiplier: {embed_multiplier}x, attendance: {[user[0] for user in event['attendance'].values()]})")
+        attendance_user_list = [user[0] for user in event['attendance'].values()] + manual_attendance_users
+        print(f"📝 Reconstructed event: {event_name} (ID: {event_id}, multiplier: {embed_multiplier}x, attendance: {attendance_user_list})")
         return True
     
     async def _process_reactions_for_event(self, event, message):
@@ -401,7 +409,7 @@ async def add_users(ctx, event_id: str, *members: discord.Member):
             return
         
         event = event_tracker.events[event_id]
-        member_names = [member.display_name for member in members]
+        member_names = [member.name for member in members]
         
         # Update the original event message to show the new attendance
         try:
@@ -416,9 +424,18 @@ async def add_users(ctx, event_id: str, *members: discord.Member):
             embed = event_message.embeds[0]
 
             found_existing_field = False
-            for field in embed.fields:
-                if field.name == "Manual Attendance":
-                    field.value = f"{field.value}, {', '.join(member_names)}"
+            for index, field in enumerate(embed.fields):
+               if field.name == "Manual Attendance":
+                    # 1. Get the current value from the read-only field
+                    current_value = field.value
+                    
+                    # 2. Create the new, updated value string
+                    new_value = f"{current_value}, {', '.join(member_names)}"
+                    
+                    # 3. Use set_field_at() to replace the old field with a new one
+                    #    We pass the original name and inline status to keep them the same.
+                    embed.set_field_at(index, name=field.name, value=new_value, inline=field.inline)
+                    
                     found_existing_field = True
                     break
             if not found_existing_field:
@@ -426,6 +443,9 @@ async def add_users(ctx, event_id: str, *members: discord.Member):
 
             # Update the embed
             await event_message.edit(embed=embed)
+
+            # Re-process the message to update the event
+            await event_tracker._process_message_for_events(event_message)
 
             # Send confirmation
             await ctx.send(f"✅ Successfully added {len(member_names)} user(s) to event: {', '.join(member_names)}")
