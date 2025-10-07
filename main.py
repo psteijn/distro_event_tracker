@@ -148,7 +148,7 @@ class EventTracker:
         # Calculate weighted average with multipliers
         weighted_summary = []
         for user_name, score in sorted_users:
-            weighted_summary.append(f"{user_name} ({score:.2f})")
+            weighted_summary.append(f"{user_name} ({score:.2f})".rstrip('0').rstrip('.'))
         
         return f"ALL EVENTS: {', '.join(weighted_summary)}"  # Show all attendees with scores
     
