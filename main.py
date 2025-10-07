@@ -82,7 +82,7 @@ class EventTracker:
             attendance_by_user = event['attendance']
             for user in event['manual_attendance']:
                 if user not in attendance_by_user:
-                    attendance_by_user[user] = (user, [])
+                    attendance_by_user[user] = (user, ["🐈"])
 
             event_summary = {
                 'id': event['id'],
@@ -134,8 +134,9 @@ class EventTracker:
                         participation_multiplier = max(participation_multiplier, 0.5)
                     elif emoji_name == EMOJI_TWENTY_FIVE:
                         participation_multiplier = max(participation_multiplier, 0.25)
-                    else:
-                        participation_multiplier = 1.0  # All other emojis count as full attendance! Beetle wants to ban people on this.
+                    elif emoji_name == "🐈":
+                        participation_multiplier = 1.0
+
                 print(f"Participation multiplier: {participation_multiplier} for user: {user_name}")
                 user_attendance_score[user_name] += multiplier * participation_multiplier
         
