@@ -106,15 +106,12 @@ class EventTracker:
         total_events = len(events)
         
         for event in events:
-            print(f"Processing event: {event['name']}")
             multiplier = event.get('multiplier', 1.0)  # Default to 1.0 if no multiplier
             for user_id, (user_name, emojis) in event['attendance_by_user'].items():
                 participation_multiplier = 0.0
                 if user_name not in user_attendance_score:
                     user_attendance_score[user_name] = 0
                 for emoji in emojis:
-                    print(f"Processing emoji: {emoji} for user: {user_name}")
-                    
                     # Extract emoji name from Discord emoji string (format: <:name:id> or just the emoji name)
                     emoji_name = None
                     if emoji.startswith('<:') and emoji.endswith('>'):
@@ -123,8 +120,6 @@ class EventTracker:
                     else:
                         # Unicode emoji or already just the name
                         emoji_name = emoji
-                    
-                    print(f"Extracted emoji name: {emoji_name}")
                     
                     if emoji_name == EMOJI_HUNDRED:
                         participation_multiplier = 1.0
@@ -137,7 +132,6 @@ class EventTracker:
                     elif emoji_name == "🐈":
                         participation_multiplier = 1.0
 
-                print(f"Participation multiplier: {participation_multiplier} for user: {user_name}")
                 user_attendance_score[user_name] += multiplier * participation_multiplier
         
         if not user_attendance_score:
@@ -630,37 +624,43 @@ async def help_events(ctx):
     """Show help for event commands"""
     embed = discord.Embed(
         title="🤖 Event Tracker Bot Commands",
-        description="Commands for managing events and attendance",
+        description="Commands for managing events and attendance tracking with weighted scoring",
         color=discord.Color.purple()
     )
     
     embed.add_field(
-        name="Create Events",
-        value=f"`{BOT_PREFIX}dungeon Dungeon Name` - 🏰 Dungeon (1x multiplier)\n`{BOT_PREFIX}miniboss Miniboss Name` - ⚔️ Miniboss (1x multiplier)\n`{BOT_PREFIX}boss Boss Name` - 👹 Boss (2x multiplier)\n\nCreates events with different multipliers that affect scoring",
+        name="📅 Create Events",
+        value=f"`{BOT_PREFIX}dungeon Dungeon Name` - 🏰 Dungeon (1x multiplier)\n`{BOT_PREFIX}miniboss Miniboss Name` - ⚔️ Miniboss (1x multiplier)\n`{BOT_PREFIX}boss Boss Name` - 👹 Boss (2x multiplier)\n\nCreates events with different multipliers that affect final scoring. Boss events give double points!",
         inline=False
     )
     
     embed.add_field(
-        name="Generate Summary",
-        value=f"`{BOT_PREFIX}summary START_TIMESTAMP [END_TIMESTAMP]`\nGenerates attendance summary for events in time range\n\n**Supported timestamp formats:**\n• `YYYY-MM-DD` (date only)\n• `YYYY-MM-DD HH:MM:SS` (full timestamp)\n• `YYYY-MM-DD HH:MM` (date with time)\n• `YYYY/MM/DD` (alternative format)\n• `MM/DD/YYYY` (US format)\n• `1234567890` (epoch seconds)\n\n**Examples:**\n• `{BOT_PREFIX}summary 2024-01-01` (all events after Jan 1)\n• `{BOT_PREFIX}summary 2024-01-01 2024-01-31` (events in January)\n• `{BOT_PREFIX}summary 2024-01-01 09:00:00 2024-01-01 18:00:00` (events on Jan 1, 9am-6pm)\n• `{BOT_PREFIX}summary 1704067200` (all events after epoch timestamp)",
+        name="📊 Generate Summary",
+        value=f"`{BOT_PREFIX}summary START_TIMESTAMP [END_TIMESTAMP]`\nGenerates attendance summary with weighted scoring across all events\n\n**Supported timestamp formats:**\n• `YYYY-MM-DD` (date only)\n• `YYYY-MM-DD HH:MM:SS` (full timestamp)\n• `YYYY-MM-DD HH:MM` (date with time)\n• `YYYY/MM/DD` (alternative format)\n• `MM/DD/YYYY` (US format)\n• `1234567890` (epoch seconds)\n\n**Examples:**\n• `{BOT_PREFIX}summary 2024-01-01` (all events after Jan 1)\n• `{BOT_PREFIX}summary 2024-01-01 2024-01-31` (events in January)\n• `{BOT_PREFIX}summary 1704067200` (all events after epoch timestamp)",
         inline=False
     )
     
     embed.add_field(
-        name="Add Users to Event",
-        value=f"`{BOT_PREFIX}add_users EVENT_ID @user1 @user2 @user3`\nManually add users to an existing event\n\n**Examples:**\n• `{BOT_PREFIX}add_users 1234567890_1234567890 @alice @bob`\n\nOnly supports mentions. Updates the original event message.",
+        name="👥 Add Users to Event",
+        value=f"`{BOT_PREFIX}add_users EVENT_ID @user1 @user2 @user3`\nManually add users to an existing event (they get full attendance with 🐈 emoji)\n\n**Examples:**\n• `{BOT_PREFIX}add_users 1234567890_1234567890 @alice @bob`\n\nOnly supports mentions. Updates the original event message automatically.",
         inline=False
     )
 
     embed.add_field(
-        name="Help",
+        name="🎯 Attendance & Scoring",
+        value="**Emoji Reactions (Custom Emojis):**\n• `share_100` - 100% attendance (1.0x)\n• `share_75` - 75% attendance (0.75x)\n• `share_50` - 50% attendance (0.5x)\n• `share_25` - 25% attendance (0.25x)\n\n**Manual Attendance:**\n• Added via `add_users` command gets 🐈 emoji (1.0x)\n\n**Final Score = Event Multiplier × Participation Multiplier**\n• Dungeon/Miniboss: 1x multiplier\n• Boss events: 2x multiplier",
+        inline=False
+    )
+
+    embed.add_field(
+        name="❓ Help",
         value=f"`{BOT_PREFIX}help_events`\nShows this help message",
         inline=False
     )
     
     embed.add_field(
-        name="How to Attend",
-        value="React to event messages with emojis to register attendance",
+        name="ℹ️ How to Attend",
+        value="React to event messages with the custom emoji reactions to register your attendance level. The bot automatically tracks and calculates weighted scores across all events!",
         inline=False
     )
     
