@@ -608,7 +608,7 @@ async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None)
         
         # Add event names line
         event_names = [event['name'] for event in summary['events']]
-        text_output += f"Events: {', '.join(event_names)}\n"
+        text_output += f"\n-------\nEvents: {', '.join(event_names)}\n"
         
         # Add weighted average summary
         weighted_summary = event_tracker.calculate_weighted_average(summary['events'])
