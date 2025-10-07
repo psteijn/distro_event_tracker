@@ -629,6 +629,110 @@ async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None)
     except Exception as e:
         await ctx.send(f"An error occurred while generating the summary: {str(e)}")
 
+@bot.command(name='delete_event')
+async def delete_event(ctx, event_id: str):
+    """Delete an event (only the event creator can delete their own events)
+    
+    Usage: !delete_event EVENT_ID
+    """
+    try:
+        # Check if event exists
+        if event_id not in event_tracker.events:
+            await ctx.send(f"❌ Event with ID `{event_id}` not found.")
+            return
+        
+        event = event_tracker.events[event_id]
+        
+        # Check if user is the event creator
+        if event['creator_id'] != ctx.author.id:
+            await ctx.send(f"❌ You can only delete events that you created. This event was created by someone else.")
+            return
+        
+        # Send confirmation message
+        confirmation_embed = discord.Embed(
+            title="⚠️ Confirm Event Deletion",
+            description=f"Are you sure you want to delete the event **{event['name']}**?\n\nThis action cannot be undone and will remove all attendance data.",
+            color=discord.Color.red()
+        )
+        confirmation_embed.add_field(name="Event ID", value=event_id, inline=True)
+        confirmation_embed.add_field(name="Created", value=f"<t:{int(event['created_at'])}:R>", inline=True)
+        confirmation_embed.set_footer(text="React with ✅ to confirm or ❌ to cancel")
+        
+        confirmation_message = await ctx.send(embed=confirmation_embed)
+        
+        # Add reaction buttons
+        await confirmation_message.add_reaction("✅")
+        await confirmation_message.add_reaction("❌")
+        
+        def check(reaction, user):
+            return (user == ctx.author and 
+                   str(reaction.emoji) in ["✅", "❌"] and 
+                   reaction.message.id == confirmation_message.id)
+        
+        try:
+            # Wait for user reaction (10 second timeout)
+            reaction, user = await bot.wait_for('reaction_add', timeout=30.0, check=check)
+            
+            if str(reaction.emoji) == "✅":
+                # User confirmed deletion
+                try:
+                    # Try to delete the Discord message
+                    channel = bot.get_channel(event['channel_id'])
+                    if channel:
+                        try:
+                            event_message = await channel.fetch_message(event['message_id'])
+                            await event_message.delete()
+                        except discord.NotFound:
+                            # Message already deleted, that's okay
+                            pass
+                        except Exception as e:
+                            print(f"Warning: Could not delete Discord message for event {event_id}: {e}")
+                    
+                    # Remove from memory
+                    del event_tracker.events[event_id]
+                    
+                    # Send success message
+                    success_embed = discord.Embed(
+                        title="✅ Event Deleted",
+                        description=f"Successfully deleted event **{event['name']}**",
+                        color=discord.Color.green()
+                    )
+                    success_embed.add_field(name="Event ID", value=event_id, inline=True)
+                    await ctx.send(embed=success_embed)
+                    
+                    # Log the deletion
+                    print(f"🗑️ Event deleted: {event['name']} (ID: {event_id}) by {ctx.author.name} ({ctx.author.id})")
+                    
+                except Exception as e:
+                    await ctx.send(f"❌ An error occurred while deleting the event: {str(e)}")
+                    print(f"Error deleting event {event_id}: {e}")
+                    
+            elif str(reaction.emoji) == "❌":
+                # User cancelled deletion
+                await ctx.send("❌ Event deletion cancelled.")
+                
+        except asyncio.TimeoutError:
+            await ctx.send("⏰ Deletion confirmation timed out. Event was not deleted.")
+            
+    except Exception as e:
+        await ctx.send(f"❌ An error occurred: {str(e)}")
+        print(f"Error in delete_event command: {e}")
+
+# Error handler for delete_event command
+@delete_event.error
+async def delete_event_error(ctx, error):
+    if isinstance(error, commands.MissingRequiredArgument):
+        error_message = (
+            "It looks like you're missing the event ID! 🤔\n\n"
+            "Please use the correct format: `!delete_event <event_id>`\n"
+            "**Example:** `!delete_event 1424971912928563281_1759810178`\n\n"
+            "You can only delete events that you created."
+        )
+        await ctx.send(error_message)
+    else:
+        await ctx.send("An unexpected error occurred. Please tell Waffle or Beetle.")
+        print(f"An unhandled error in delete_event occurred: {error}")
+
 @bot.command(name='help_events')
 async def help_events(ctx):
     """Show help for event commands"""
@@ -653,6 +757,12 @@ async def help_events(ctx):
     embed.add_field(
         name="👥 Add Users to Event",
         value=f"`{BOT_PREFIX}add_users EVENT_ID @user1 @user2 @user3`\nManually add users to an existing event (they get full attendance with 🐈 emoji)\n\n**Examples:**\n• `{BOT_PREFIX}add_users 1234567890_1234567890 @alice @bob`\n\nOnly supports mentions. Updates the original event message automatically.",
+        inline=False
+    )
+
+    embed.add_field(
+        name="🗑️ Delete Event",
+        value=f"`{BOT_PREFIX}delete_event EVENT_ID`\nDelete an event (only the event creator can delete their own events)\n\n**Example:**\n• `{BOT_PREFIX}delete_event 1234567890_1234567890`\n\n⚠️ **Warning:** This action cannot be undone and will remove all attendance data!",
         inline=False
     )
 
