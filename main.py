@@ -163,20 +163,36 @@ class EventTracker:
         return f"ALL EVENTS: {', '.join(weighted_summary)}"  # Show all attendees with scores
     
     async def reconstruct_from_history(self, bot):
-        """Reconstruct events from message history"""
+        """Reconstruct events from message history with optimizations"""
         print("🔄 Reconstructing events from message history...")
         reconstructed_count = 0
+        total_messages_scanned = 0
+        event_messages_found = 0
         
         channel = bot.get_channel(int(EVENT_CHANNEL_ID))
         if channel:
             print(f"📖 Scanning channel: {channel.name}")
+            
+            # Optimization #1: Early filtering - only process bot messages with embeds
             async for message in channel.history(limit=1000):
+                total_messages_scanned += 1
+                
+                # Early filtering: Skip non-bot messages immediately
+                if message.author != bot.user:
+                    continue
+                
+                # Early filtering: Skip messages without embeds
+                if not message.embeds:
+                    continue
+                
+                event_messages_found += 1
+                
                 if await self._process_message_for_events(message):
                     reconstructed_count += 1
         else:
             print(f"❌ Channel {EVENT_CHANNEL_ID} not found")
 
-        print(f"✅ Reconstructed {reconstructed_count} events from message history")
+        print(f"✅ Reconstructed {reconstructed_count} events from {event_messages_found} event messages (scanned {total_messages_scanned} total messages)")
         return reconstructed_count
     
     async def _process_message_for_events(self, message):
@@ -308,26 +324,53 @@ class EventTracker:
         return True
     
     async def _process_reactions_for_event(self, event, message):
-        """Process reactions on a message to reconstruct attendance"""
+        """Process reactions on a message to reconstruct attendance with parallel processing"""
         try:
-            # Get all reactions on the message
+            # Optimization #2: Parallel reaction processing
+            # Collect all reaction tasks first
+            reaction_tasks = []
+            
             for reaction in message.reactions:
                 emoji_str = str(reaction.emoji)
+                # Create a task to fetch all users for this reaction
+                task = self._fetch_reaction_users(reaction, emoji_str)
+                reaction_tasks.append(task)
+            
+            # Execute all reaction fetching in parallel
+            if reaction_tasks:
+                reaction_results = await asyncio.gather(*reaction_tasks, return_exceptions=True)
                 
-                # Get users who reacted
-                async for user in reaction.users():
-                    if user.bot:
-                        continue  # Skip bot reactions
+                # Process results
+                for result in reaction_results:
+                    if isinstance(result, Exception):
+                        print(f"⚠️ Error fetching reaction users: {result}")
+                        continue
                     
-                    # Add attendance record
-                    if user.id not in event['attendance']:
-                        event['attendance'][user.id] = (user.name, [])
-                    
-                    if emoji_str not in event['attendance'][user.id][1]:
-                        event['attendance'][user.id][1].append(emoji_str)
+                    emoji_str, users = result
+                    for user in users:
+                        if user.bot:
+                            continue  # Skip bot reactions
+                        
+                        # Add attendance record
+                        if user.id not in event['attendance']:
+                            event['attendance'][user.id] = (user.name, [])
+                        
+                        if emoji_str not in event['attendance'][user.id][1]:
+                            event['attendance'][user.id][1].append(emoji_str)
                         
         except Exception as e:
             print(f"⚠️ Error processing reactions for event {event['name']}: {e}")
+    
+    async def _fetch_reaction_users(self, reaction, emoji_str):
+        """Helper method to fetch all users for a reaction"""
+        try:
+            users = []
+            async for user in reaction.users():
+                users.append(user)
+            return (emoji_str, users)
+        except Exception as e:
+            print(f"⚠️ Error fetching users for reaction {emoji_str}: {e}")
+            return (emoji_str, [])
 
 # Initialize event tracker
 event_tracker = EventTracker()
