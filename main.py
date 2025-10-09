@@ -20,6 +20,12 @@ bot = commands.Bot(command_prefix=BOT_PREFIX, intents=intents)
 # In-memory storage for events (will be replaced with database later)
 events_storage = {}
 
+# Global emoji cache - loaded once at startup
+hundred_emoji = None
+seventy_five_emoji = None
+fifty_emoji = None
+twenty_five_emoji = None
+
 class EventTracker:
     def __init__(self):
         self.events = {}
@@ -85,9 +91,14 @@ class EventTracker:
             
             total_attendees = len(event['attendance']) + len(event['manual_attendance'])
             attendance_by_user = event['attendance']
-            for user in event['manual_attendance']:
-                if user not in attendance_by_user:
-                    attendance_by_user[user] = (user, ["🐈"])
+            for user_data in event['manual_attendance']:
+                user_name = user_data['name']
+                user_multiplier = user_data['multiplier']
+                
+                if user_name not in attendance_by_user:
+                    # Use the appropriate emoji based on multiplier
+                    emoji_string = multiplier_to_emoji_string(user_multiplier)
+                    attendance_by_user[user_name] = (user_name, [emoji_string])
 
             event_summary = {
                 'id': event['id'],
@@ -134,8 +145,6 @@ class EventTracker:
                         participation_multiplier = max(participation_multiplier, 0.5)
                     elif emoji_name == EMOJI_TWENTY_FIVE:
                         participation_multiplier = max(participation_multiplier, 0.25)
-                    elif emoji_name == "🐈":
-                        participation_multiplier = 1.0
 
                 user_attendance_score[user_name] += multiplier * participation_multiplier
         
@@ -242,8 +251,32 @@ class EventTracker:
             elif field.name == "Manual Attendance":
                 # Extract manual attendance from embed field
                 manual_attendance = field.value
-                for user in manual_attendance.split(', '):
-                    manual_attendance_users.append(user)
+                for user_entry in manual_attendance.split(', '):
+                    user_entry = user_entry.strip()
+                    # Check if this is the new emoji format (e.g., "emoji username")
+                    if user_entry.startswith('<:') or user_entry.startswith(':'):
+                        # New emoji format - extract username and determine multiplier from emoji
+                        parts = user_entry.split(' ', 1)
+                        if len(parts) == 2:
+                            emoji_str = parts[0]
+                            user_name = parts[1]
+                            # Determine multiplier from emoji
+                            multiplier = 1.0  # Default
+                            if emoji_str == str(hundred_emoji) or EMOJI_HUNDRED in emoji_str:
+                                multiplier = 1.0
+                            elif emoji_str == str(seventy_five_emoji) or EMOJI_SEVENTY_FIVE in emoji_str:
+                                multiplier = 0.75
+                            elif emoji_str == str(fifty_emoji) or EMOJI_FIFTY in emoji_str:
+                                multiplier = 0.5
+                            elif emoji_str == str(twenty_five_emoji) or EMOJI_TWENTY_FIVE in emoji_str:
+                                multiplier = 0.25
+                            manual_attendance_users.append({'name': user_name, 'multiplier': multiplier})
+                        else:
+                            # Fallback if parsing fails
+                            manual_attendance_users.append({'name': user_entry, 'multiplier': 1.0})
+                    else:
+                        # Old format (just username)
+                        manual_attendance_users.append({'name': user_entry, 'multiplier': 1.0})
         
         # If we can't find creator info, skip this event
         if not creator_id:
@@ -360,10 +393,56 @@ def get_pacific_now() -> datetime:
     """Get current time in Pacific timezone"""
     return datetime.now(PACIFIC_TZ)
 
+def multiplier_to_emoji_string(multiplier: float) -> str:
+    """Convert a multiplier value to the appropriate emoji string"""
+    if multiplier >= 1.0:
+        return str(hundred_emoji) if hundred_emoji else EMOJI_HUNDRED
+    elif multiplier >= 0.75:
+        return str(seventy_five_emoji) if seventy_five_emoji else EMOJI_SEVENTY_FIVE
+    elif multiplier >= 0.5:
+        return str(fifty_emoji) if fifty_emoji else EMOJI_FIFTY
+    elif multiplier >= 0.25:
+        return str(twenty_five_emoji) if twenty_five_emoji else EMOJI_TWENTY_FIVE
+    else:
+        # Default to 25% for very low multipliers
+        return str(twenty_five_emoji) if twenty_five_emoji else EMOJI_TWENTY_FIVE
+
 @bot.event
 async def on_ready():
+    global hundred_emoji, seventy_five_emoji, fifty_emoji, twenty_five_emoji
+    
     print(f'{bot.user} has connected to Discord!')
     print(f'Bot is in {len(bot.guilds)} guilds')
+    
+    # Load emojis once at startup for performance
+    try:
+        # Get the first guild (assuming bot is only in one guild)
+        guild = bot.guilds[0] if bot.guilds else None
+        if guild:
+            hundred_emoji = discord.utils.get(guild.emojis, name=f"{EMOJI_HUNDRED}")
+            seventy_five_emoji = discord.utils.get(guild.emojis, name=f"{EMOJI_SEVENTY_FIVE}")
+            fifty_emoji = discord.utils.get(guild.emojis, name=f"{EMOJI_FIFTY}")
+            twenty_five_emoji = discord.utils.get(guild.emojis, name=f"{EMOJI_TWENTY_FIVE}")
+            
+            # Check if all emojis were found
+            missing_emojis = []
+            if not hundred_emoji:
+                missing_emojis.append(EMOJI_HUNDRED)
+            if not seventy_five_emoji:
+                missing_emojis.append(EMOJI_SEVENTY_FIVE)
+            if not fifty_emoji:
+                missing_emojis.append(EMOJI_FIFTY)
+            if not twenty_five_emoji:
+                missing_emojis.append(EMOJI_TWENTY_FIVE)
+            
+            if missing_emojis:
+                print(f"⚠️ Warning: Could not find emojis: {', '.join(missing_emojis)}")
+            else:
+                print(f"✅ Successfully loaded all emojis: {EMOJI_HUNDRED}, {EMOJI_SEVENTY_FIVE}, {EMOJI_FIFTY}, {EMOJI_TWENTY_FIVE}")
+        else:
+            print("❌ No guilds found - emojis cannot be loaded")
+    except Exception as e:
+        print(f"❌ Error loading emojis: {e}")
     
     # Reconstruct events from message history
     try:
@@ -377,6 +456,12 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     """Helper function to create events with multipliers"""
     if EVENT_CHANNEL_ID and str(ctx.channel.id) != EVENT_CHANNEL_ID:
         await ctx.send(f"Events can only be created in the designated event channel.")
+        return
+    
+    # Check if emojis are loaded
+    if not all([hundred_emoji, seventy_five_emoji, fifty_emoji, twenty_five_emoji]):
+        await ctx.send("❌ Error: Required emojis are not loaded. Please contact an administrator.")
+        print("❌ Error: Attempted to create event but emojis are not loaded")
         return
     
     # Generate unique event ID
@@ -393,10 +478,6 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     )
     
     # Send event message
-    hundred_emoji = discord.utils.get(ctx.guild.emojis, name=f"{EMOJI_HUNDRED}")
-    seventy_five_emoji = discord.utils.get(ctx.guild.emojis, name=f"{EMOJI_SEVENTY_FIVE}")
-    fifty_emoji = discord.utils.get(ctx.guild.emojis, name=f"{EMOJI_FIFTY}")
-    twenty_five_emoji = discord.utils.get(ctx.guild.emojis, name=f"{EMOJI_TWENTY_FIVE}")
     embed = discord.Embed(
         title=f"{emoji} {event_name}",
         description=f"React with {hundred_emoji} {seventy_five_emoji} {fifty_emoji} {twenty_five_emoji} to register your attendance!\n{hundred_emoji} is full attendance, the others are partial attendance. ",
@@ -443,13 +524,19 @@ async def omniboss(ctx, *, omniboss_name: str):
     await create_event_with_multiplier(ctx, omniboss_name, 8.0, "👑", discord.Color.purple())
 
 @bot.command(name='add_users')
-async def add_users(ctx, event_id: str, *members: discord.Member):
-    """Add users to an event by event_id
+async def add_users(ctx, event_id: str, multiplier: float, *members: discord.Member):
+    """Add users to an event by event_id with a multiplier
     
-    Usage: !add_users EVENT_ID user1 user2 @user3 DisplayName
-    Supports both usernames and mentions
+    Usage: !add_users EVENT_ID MULTIPLIER @user1 @user2 @user3
+    Supports only mentions
+    Multiplier affects the scoring weight for these users
     """
     try:
+        # Validate multiplier
+        if multiplier not in (1.0, 0.75, 0.5, 0.25):
+            await ctx.send("❌ Multiplier must be 1.0, 0.75, 0.5, or 0.25!")
+            return
+        
         # Check if event exists
         if event_id not in event_tracker.events:
             await ctx.send(f"❌ Event with ID `{event_id}` not found.")
@@ -463,6 +550,13 @@ async def add_users(ctx, event_id: str, *members: discord.Member):
         event = event_tracker.events[event_id]
         member_names = [member.name for member in members]
         
+        # Add new users with their multiplier
+        for member_name in member_names:
+            # Check if user already exists and remove them first
+            event['manual_attendance'] = [user for user in event['manual_attendance'] if user['name'] != member_name]
+            # Add user with new multiplier
+            event['manual_attendance'].append({'name': member_name, 'multiplier': multiplier})
+        
         # Update the original event message to show the new attendance
         try:
             channel = bot.get_channel(event['channel_id'])
@@ -475,23 +569,26 @@ async def add_users(ctx, event_id: str, *members: discord.Member):
             # Create updated embed
             embed = event_message.embeds[0]
 
+            # Create the manual attendance display string with emojis
+            manual_attendance_display = []
+            for user_data in event['manual_attendance']:
+                if isinstance(user_data, dict):
+                    # New format with emoji based on multiplier
+                    emoji_string = multiplier_to_emoji_string(user_data['multiplier'])
+                    manual_attendance_display.append(f"{emoji_string} {user_data['name']}")
+                else:
+                    # Old format (shouldn't happen after conversion, but safety check)
+                    manual_attendance_display.append(str(user_data))
+
             found_existing_field = False
             for index, field in enumerate(embed.fields):
                if field.name == "Manual Attendance":
-                    # 1. Get the current value from the read-only field
-                    current_value = field.value
-                    
-                    # 2. Create the new, updated value string
-                    new_value = f"{current_value}, {', '.join(member_names)}"
-                    
-                    # 3. Use set_field_at() to replace the old field with a new one
-                    #    We pass the original name and inline status to keep them the same.
-                    embed.set_field_at(index, name=field.name, value=new_value, inline=field.inline)
-                    
+                    # Replace the field with updated manual attendance
+                    embed.set_field_at(index, name=field.name, value=', '.join(manual_attendance_display), inline=field.inline)
                     found_existing_field = True
                     break
             if not found_existing_field:
-                embed.add_field(name="Manual Attendance", value=f"{', '.join(member_names)}", inline=True)
+                embed.add_field(name="Manual Attendance", value=', '.join(manual_attendance_display), inline=True)
 
             # Update the embed
             await event_message.edit(embed=embed)
@@ -500,8 +597,8 @@ async def add_users(ctx, event_id: str, *members: discord.Member):
             await event_tracker._process_message_for_events(event_message)
 
             # Send confirmation
-            await ctx.send(f"✅ Successfully added {len(member_names)} user(s) to event: {', '.join(member_names)}")
-            print(f"Added users to event {event_id}: {', '.join(member_names)} by {ctx.author.name}")
+            await ctx.send(f"✅ Successfully added {len(member_names)} user(s) to event with {multiplier}x multiplier: {', '.join(member_names)}")
+            print(f"Added users to event {event_id}: {', '.join(member_names)} with {multiplier}x multiplier by {ctx.author.name}")
                 
         except Exception as e:
             # Error updating the event message
@@ -520,8 +617,9 @@ async def add_users_error(ctx, error):
         # Create a user-friendly message
         error_message = (
             "It looks like you're missing an argument! 🤔\n\n"
-            "Please use the correct format: `!add_users <event_id> <user_names>`\n"
-            "**Example:** `!add_users 1424971912928563281_1759810178 @Beetle @Mantis`"
+            "Please use the correct format: `!add_users <event_id> <multiplier> <user_names>`\n"
+            "**Example:** `!add_users 1424971912928563281_1759810178 1.5 @Beetle @Mantis`\n"
+            "**Multiplier examples:** 1.0 (full), 0.75 (partial), 2.0 (double)"
         )
         await ctx.send(error_message)
     else:
@@ -774,7 +872,7 @@ async def help_events(ctx):
     
     embed.add_field(
         name="👥 Add Users to Event",
-        value=f"`{BOT_PREFIX}add_users EVENT_ID @user1 @user2 @user3`\nManually add users to an existing event (they get full attendance with 🐈 emoji)\n\n**Examples:**\n• `{BOT_PREFIX}add_users 1234567890_1234567890 @alice @bob`\n\nOnly supports mentions. Updates the original event message automatically.",
+        value=f"`{BOT_PREFIX}add_users EVENT_ID MULTIPLIER @user1 @user2 @user3`\nManually add users to an existing event with custom multiplier scoring\n\n**Examples:**\n• `{BOT_PREFIX}add_users 1234567890_1234567890 1.0 @alice @bob` (full attendance)\n• `{BOT_PREFIX}add_users 1234567890_1234567890 0.75 @charlie` (partial attendance)\n• `{BOT_PREFIX}add_users 1234567890_1234567890 2.0 @david` (double attendance)\n\n**Multiplier examples:** 1.0 (full), 0.75 (partial), 2.0 (double). Updates the original event message automatically.",
         inline=False
     )
 
@@ -786,7 +884,7 @@ async def help_events(ctx):
 
     embed.add_field(
         name="🎯 Attendance & Scoring",
-        value="**Emoji Reactions (Custom Emojis):**\n• `share_100` - 100% attendance (1.0x)\n• `share_75` - 75% attendance (0.75x)\n• `share_50` - 50% attendance (0.5x)\n• `share_25` - 25% attendance (0.25x)\n\n**Manual Attendance:**\n• Added via `add_users` command gets 🐈 emoji (1.0x)\n\n**Final Score = Event Multiplier × Participation Multiplier**\n• Dungeon/Miniboss: 1x multiplier\n• Boss events: 2x multiplier",
+        value="**Emoji Reactions (Custom Emojis):**\n• `share_100` - 100% attendance (1.0x)\n• `share_75` - 75% attendance (0.75x)\n• `share_50` - 50% attendance (0.5x)\n• `share_25` - 25% attendance (0.25x)\n\n**Manual Attendance:**\n• Added via `add_users` command with custom multiplier\n• Example: `!add_users EVENT_ID 1.5 @user` gives 1.5x participation\n\n**Final Score = Event Multiplier × Participation Multiplier**\n• Dungeon/Miniboss: 1x multiplier\n• Boss events: 2x multiplier\n• Omniboss events: 8x multiplier",
         inline=False
     )
 
