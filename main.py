@@ -194,10 +194,18 @@ class EventTracker:
             # Miniboss event
             event_name = embed.title.replace("⚔️ ", "")
             multiplier = 1.0
+        elif embed.title.startswith("🗺️ "):
+            # T8 maps event
+            event_name = embed.title.replace("🗺️ ", "")
+            multiplier = 1.0
         elif embed.title.startswith("👹 "):
             # Boss event
             event_name = embed.title.replace("👹 ", "")
             multiplier = 2.0
+        elif embed.title.startswith("👑 "):
+            # Omniboss event
+            event_name = embed.title.replace("👑 ", "")
+            multiplier = 8.0
         else:
             # Not a recognized event type
             return False
@@ -414,15 +422,25 @@ async def dungeon(ctx, *, dungeon_name: str):
     """Create a new dungeon event (1x multiplier)"""
     await create_event_with_multiplier(ctx, dungeon_name, 1.0, "🏰", discord.Color.blue())
 
-@bot.command(name='miniboss')
+@bot.command(name='miniboss', aliases=['mini'])
 async def miniboss(ctx, *, miniboss_name: str):
     """Create a new miniboss event (1x multiplier)"""
     await create_event_with_multiplier(ctx, miniboss_name, 1.0, "⚔️", discord.Color.orange())
 
-@bot.command(name='boss')
+@bot.command(name='boss', aliases=['main', 'mainboss'])
 async def boss(ctx, *, boss_name: str):
     """Create a new boss event (2x multiplier)"""
     await create_event_with_multiplier(ctx, boss_name, 2.0, "👹", discord.Color.red())
+
+@bot.command(name='t8')
+async def t8(ctx, *, t8_name: str):
+    """Create a new t8 maps event (1x multiplier)"""
+    await create_event_with_multiplier(ctx, t8_name, 1.0, "🗺️", discord.Color.green())
+
+@bot.command(name='omniboss', aliases=['omni'])
+async def omniboss(ctx, *, omniboss_name: str):
+    """Create a new omniboss event (8x multiplier)"""
+    await create_event_with_multiplier(ctx, omniboss_name, 8.0, "👑", discord.Color.purple())
 
 @bot.command(name='add_users')
 async def add_users(ctx, event_id: str, *members: discord.Member):
@@ -744,7 +762,7 @@ async def help_events(ctx):
     
     embed.add_field(
         name="📅 Create Events",
-        value=f"`{BOT_PREFIX}dungeon Dungeon Name` - 🏰 Dungeon (1x multiplier)\n`{BOT_PREFIX}miniboss Miniboss Name` - ⚔️ Miniboss (1x multiplier)\n`{BOT_PREFIX}boss Boss Name` - 👹 Boss (2x multiplier)\n\nCreates events with different multipliers that affect final scoring. Boss events give double points!",
+        value=f"`{BOT_PREFIX}dungeon Dungeon Name` - 🏰 Dungeon (1x multiplier)\n`{BOT_PREFIX}miniboss Miniboss Name` - ⚔️ Miniboss (1x multiplier)\n`{BOT_PREFIX}mini Miniboss Name` - ⚔️ Miniboss (1x multiplier, alias)\n`{BOT_PREFIX}t8 T8 Name` - 🗺️ T8 Maps (1x multiplier)\n`{BOT_PREFIX}boss Boss Name` - 👹 Boss (2x multiplier)\n`{BOT_PREFIX}main Boss Name` - 👹 Boss (2x multiplier, alias)\n`{BOT_PREFIX}mainboss Boss Name` - 👹 Boss (2x multiplier, alias)\n`{BOT_PREFIX}omniboss Omniboss Name` - 👑 Omniboss (8x multiplier)\n`{BOT_PREFIX}omni Omniboss Name` - 👑 Omniboss (8x multiplier, alias)\n\nCreates events with different multipliers that affect final scoring. Omniboss events give 8x points!",
         inline=False
     )
     
