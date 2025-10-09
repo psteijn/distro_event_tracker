@@ -892,6 +892,153 @@ async def delete_event_error(ctx, error):
         await ctx.send("An unexpected error occurred. Please tell Waffle or Beetle.")
         print(f"An unhandled error in delete_event occurred: {error}")
 
+@bot.command(name='missing', aliases=['whoismissing'])
+async def missing(ctx, event_id1: str = None, event_id2: str = None):
+    """Find users who attended one event but missed another
+    
+    Usage:
+    !missing - Compare last two events (users who attended second-to-last but missed last)
+    !missing EVENT_ID1 EVENT_ID2 - Compare specific events (users who attended EVENT_ID2 but missed EVENT_ID1)
+    
+    Examples:
+    !missing
+    !missing 1424971912928563281_1759810178 1424971912928563281_1759810179
+    """
+    try:
+        if event_id1 is None and event_id2 is None:
+            # No parameters: compare last two events
+            events = list(event_tracker.events.values())
+            if len(events) < 2:
+                await ctx.send("❌ Need at least 2 events to compare. Only found {len(events)} event(s).")
+                return
+            
+            # Sort by creation time (most recent first)
+            events.sort(key=lambda x: x['created_at'], reverse=True)
+            recent_event = events[0]  # Most recent
+            previous_event = events[1]  # Second most recent
+            
+            event1_name = recent_event['name']
+            event2_name = previous_event['name']
+            
+        elif event_id1 is not None and event_id2 is not None:
+            # Two parameters: compare specific events
+            if event_id1 not in event_tracker.events:
+                await ctx.send(f"❌ Event with ID `{event_id1}` not found.")
+                return
+            
+            if event_id2 not in event_tracker.events:
+                await ctx.send(f"❌ Event with ID `{event_id2}` not found.")
+                return
+            
+            recent_event = event_tracker.events[event_id1]
+            previous_event = event_tracker.events[event_id2]
+            
+            event1_name = recent_event['name']
+            event2_name = previous_event['name']
+            
+        else:
+            await ctx.send("❌ Please provide either no parameters (for last two events) or both event IDs.")
+            return
+        
+        # Get attendees from both events
+        event1_attendees = set()
+        event2_attendees = set()
+        
+        # Process regular attendance (reactions)
+        for user_id, (user_name, emojis) in recent_event['attendance'].items():
+            event1_attendees.add(user_name)
+        
+        for user_id, (user_name, emojis) in previous_event['attendance'].items():
+            event2_attendees.add(user_name)
+        
+        # Process manual attendance
+        for user_data in recent_event.get('manual_attendance', []):
+            if isinstance(user_data, dict):
+                event1_attendees.add(user_data['name'])
+            else:
+                event1_attendees.add(str(user_data))
+        
+        for user_data in previous_event.get('manual_attendance', []):
+            if isinstance(user_data, dict):
+                event2_attendees.add(user_data['name'])
+            else:
+                event2_attendees.add(str(user_data))
+        
+        # Find users who attended event2 but missed event1
+        missing_users = event2_attendees - event1_attendees
+        
+        # Create response
+        if missing_users:
+            missing_list = sorted(list(missing_users))
+            embed = discord.Embed(
+                title="👥 Missing Users Report",
+                description=f"Users who attended **{event2_name}** but missed **{event1_name}**",
+                color=discord.Color.orange()
+            )
+            
+            # Split into chunks if too many users
+            if len(missing_list) > 20:
+                chunks = [missing_list[i:i+20] for i in range(0, len(missing_list), 20)]
+                for i, chunk in enumerate(chunks):
+                    field_name = f"Missing Users (Part {i+1})" if len(chunks) > 1 else "Missing Users"
+                    embed.add_field(
+                        name=field_name,
+                        value=", ".join(chunk),
+                        inline=False
+                    )
+            else:
+                embed.add_field(
+                    name="Missing Users",
+                    value=", ".join(missing_list),
+                    inline=False
+                )
+            
+            embed.add_field(
+                name="Summary",
+                value=f"**{len(missing_users)}** user(s) attended the previous event but missed the recent one",
+                inline=False
+            )
+            
+            await ctx.send(embed=embed)
+            
+        else:
+            # No missing users
+            embed = discord.Embed(
+                title="✅ All Previous Attendees Present",
+                description=f"Everyone who attended **{event2_name}** also attended **{event1_name}**!",
+                color=discord.Color.green()
+            )
+            embed.add_field(
+                name="Summary",
+                value=f"**{len(event2_attendees)}** user(s) attended both events",
+                inline=False
+            )
+            await ctx.send(embed=embed)
+        
+        print(f"Missing command used by {ctx.author.name}: {len(missing_users)} users missing from {event1_name} who attended {event2_name}")
+        
+    except Exception as e:
+        await ctx.send(f"❌ An error occurred while checking missing users: {str(e)}")
+        print(f"Error in missing command: {e}")
+
+@missing.error
+async def missing_error(ctx, error):
+    if isinstance(error, commands.MissingRequiredArgument):
+        error_message = (
+            "It looks like you're missing an argument! 🤔\n\n"
+            "**Usage:**\n"
+            "• `!missing` - Compare last two events\n"
+            "• `!missing EVENT_ID1 EVENT_ID2` - Compare specific events\n\n"
+            "**Examples:**\n"
+            "• `!missing`\n"
+            "• `!missing 1424971912928563281_1759810178 1424971912928563281_1759810179`\n\n"
+            "This shows users who attended the second event but missed the first event."
+        )
+        await ctx.send(error_message)
+    else:
+        await ctx.send("An unexpected error occurred. Please tell Waffle or Beetle.")
+        print(f"An unhandled error in missing command occurred: {error}")
+
 @bot.command(name='help_events')
 async def help_events(ctx):
     """Show help for event commands"""
@@ -922,6 +1069,12 @@ async def help_events(ctx):
     embed.add_field(
         name="🗑️ Delete Event",
         value=f"`{BOT_PREFIX}delete_event EVENT_ID`\nDelete an event (only the event creator can delete their own events)\n\n**Example:**\n• `{BOT_PREFIX}delete_event 1234567890_1234567890`\n\n⚠️ **Warning:** This action cannot be undone and will remove all attendance data!",
+        inline=False
+    )
+
+    embed.add_field(
+        name="👥 Find Missing Users",
+        value=f"`{BOT_PREFIX}missing [EVENT_ID1 EVENT_ID2]`\nFind users who attended one event but missed another\n\n**Examples:**\n• `{BOT_PREFIX}missing` - Compare last two events\n• `{BOT_PREFIX}missing 1234567890_1234567890 1234567890_1234567891` - Compare specific events\n\nShows users who attended the second event but missed the first event.",
         inline=False
     )
 
