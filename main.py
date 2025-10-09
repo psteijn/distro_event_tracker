@@ -577,7 +577,7 @@ async def add_users(ctx, event_id: str, multiplier: float, *members: discord.Mem
     try:
         # Validate multiplier
         if multiplier not in (1.0, 0.75, 0.5, 0.25):
-            await ctx.send("❌ Multiplier must be 1.0, 0.75, 0.5, or 0.25!")
+            await ctx.send("❌ Multiplier must be exactly 1.0, 0.75, 0.5, or 0.25!")
             return
         
         # Check if event exists
@@ -661,8 +661,8 @@ async def add_users_error(ctx, error):
         error_message = (
             "It looks like you're missing an argument! 🤔\n\n"
             "Please use the correct format: `!add_users <event_id> <multiplier> <user_names>`\n"
-            "**Example:** `!add_users 1424971912928563281_1759810178 1.5 @Beetle @Mantis`\n"
-            "**Multiplier examples:** 1.0 (full), 0.75 (partial), 2.0 (double)"
+            "**Example:** `!add_users 1424971912928563281_1759810178 0.75 @Beetle @Mantis`\n"
+            "**Fixed Multipliers:** 1.0 (full), 0.75 (partial), 0.5 (half), 0.25 (quarter)"
         )
         await ctx.send(error_message)
     else:
@@ -1164,7 +1164,7 @@ async def help_events(ctx):
     
     embed.add_field(
         name="👥 Add Users to Event",
-        value=f"`{BOT_PREFIX}add_users EVENT_ID MULTIPLIER @user1 @user2 @user3`\nManually add users to an existing event with custom multiplier scoring\n\n**Examples:**\n• `{BOT_PREFIX}add_users 1234567890_1234567890 1.0 @alice @bob` (full attendance)\n• `{BOT_PREFIX}add_users 1234567890_1234567890 0.75 @charlie` (partial attendance)\n• `{BOT_PREFIX}add_users 1234567890_1234567890 2.0 @david` (double attendance)\n\n**Multiplier examples:** 1.0 (full), 0.75 (partial), 2.0 (double). Updates the original event message automatically.",
+        value=f"`{BOT_PREFIX}add_users EVENT_ID MULTIPLIER @user1 @user2 @user3`\nManually add users to an existing event with fixed multiplier scoring\n\n**Examples:**\n• `{BOT_PREFIX}add_users 1234567890_1234567890 1.0 @alice @bob` (full attendance)\n• `{BOT_PREFIX}add_users 1234567890_1234567890 0.75 @charlie` (partial attendance)\n• `{BOT_PREFIX}add_users 1234567890_1234567890 0.5 @david` (half attendance)\n• `{BOT_PREFIX}add_users 1234567890_1234567890 0.25 @eve` (quarter attendance)\n\n**Fixed Multipliers:** 1.0 (full), 0.75 (partial), 0.5 (half), 0.25 (quarter). Updates the original event message automatically.",
         inline=False
     )
 
@@ -1188,7 +1188,7 @@ async def help_events(ctx):
 
     embed.add_field(
         name="🎯 Attendance & Scoring",
-        value="**Emoji Reactions (Custom Emojis):**\n• `share_100` - 100% attendance (1.0x)\n• `share_75` - 75% attendance (0.75x)\n• `share_50` - 50% attendance (0.5x)\n• `share_25` - 25% attendance (0.25x)\n\n**Manual Attendance:**\n• Added via `add_users` command with custom multiplier\n• Example: `!add_users EVENT_ID 1.5 @user` gives 1.5x participation\n\n**Final Score = Event Multiplier × Participation Multiplier**\n• Dungeon/Miniboss: 1x multiplier\n• Boss events: 2x multiplier\n• Omniboss events: 8x multiplier",
+        value="**Emoji Reactions (Custom Emojis):**\n• `share_100` - 100% attendance (1.0x)\n• `share_75` - 75% attendance (0.75x)\n• `share_50` - 50% attendance (0.5x)\n• `share_25` - 25% attendance (0.25x)\n\n**Manual Attendance:**\n• Added via `add_users` command with fixed multipliers\n• Only supports: 1.0, 0.75, 0.5, 0.25\n• Example: `!add_users EVENT_ID 0.75 @user` gives 0.75x participation\n\n**Final Score = Event Multiplier × Participation Multiplier**\n• Dungeon/Miniboss/T8: 1x multiplier\n• Boss events: 2x multiplier\n• Omniboss events: 8x multiplier",
         inline=False
     )
 
