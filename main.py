@@ -1039,6 +1039,108 @@ async def missing_error(ctx, error):
         await ctx.send("An unexpected error occurred. Please tell Waffle or Beetle.")
         print(f"An unhandled error in missing command occurred: {error}")
 
+@bot.command(name='rename', aliases=['rename_event'])
+async def rename_event(ctx, event_id: str, *, new_name: str):
+    """Rename an event (only the event creator can rename their own events)
+    
+    Usage: !rename EVENT_ID NEW_NAME
+    Example: !rename 1424971912928563281_1759810178 "New Event Name"
+    """
+    try:
+        # Check if event exists
+        if event_id not in event_tracker.events:
+            await ctx.send(f"❌ Event with ID `{event_id}` not found.")
+            return
+        
+        event = event_tracker.events[event_id]
+        
+        # Check if user is the event creator
+        if event['creator_id'] != ctx.author.id:
+            await ctx.send(f"❌ You can only rename events that you created. This event was created by someone else.")
+            return
+        
+        # Validate new name
+        if not new_name.strip():
+            await ctx.send("❌ Event name cannot be empty!")
+            return
+        
+        new_name = new_name.strip()
+        old_name = event['name']
+        
+        # Update the event data in memory
+        event['name'] = new_name
+        
+        # Update the Discord message
+        try:
+            channel = bot.get_channel(event['channel_id'])
+            if not channel:
+                await ctx.send(f"❌ Channel with ID `{event['channel_id']}` not found.")
+                return
+
+            event_message = await channel.fetch_message(event['message_id'])
+            
+            # Get the original embed
+            embed = event_message.embeds[0]
+            
+            # Determine the emoji prefix based on the original title
+            emoji_prefix = ""
+            if embed.title.startswith("🏰 "):
+                emoji_prefix = "🏰 "
+            elif embed.title.startswith("⚔️ "):
+                emoji_prefix = "⚔️ "
+            elif embed.title.startswith("🗺️ "):
+                emoji_prefix = "🗺️ "
+            elif embed.title.startswith("👹 "):
+                emoji_prefix = "👹 "
+            elif embed.title.startswith("👑 "):
+                emoji_prefix = "👑 "
+            
+            # Update the embed title with the new name
+            embed.title = f"{emoji_prefix}{new_name}"
+            
+            # Update the embed
+            await event_message.edit(embed=embed)
+            
+            # Send success message
+            success_embed = discord.Embed(
+                title="✅ Event Renamed",
+                description=f"Successfully renamed event from **{old_name}** to **{new_name}**",
+                color=discord.Color.green()
+            )
+            success_embed.add_field(name="Event ID", value=event_id, inline=True)
+            success_embed.add_field(name="Old Name", value=old_name, inline=True)
+            success_embed.add_field(name="New Name", value=new_name, inline=True)
+            
+            await ctx.send(embed=success_embed)
+            
+            # Log the rename
+            print(f"🔄 Event renamed: {old_name} → {new_name} (ID: {event_id}) by {ctx.author.name} ({ctx.author.id})")
+            
+        except discord.NotFound:
+            await ctx.send(f"❌ The original event message was not found. The event data has been updated in memory, but the Discord message could not be updated.")
+            print(f"⚠️ Event message not found for rename: {event_id}")
+        except Exception as e:
+            await ctx.send(f"❌ An error occurred while updating the Discord message: {str(e)}")
+            print(f"Error updating Discord message for rename: {e}")
+            
+    except Exception as e:
+        await ctx.send(f"❌ An error occurred while renaming the event: {str(e)}")
+        print(f"Error in rename_event command: {e}")
+
+@rename_event.error
+async def rename_event_error(ctx, error):
+    if isinstance(error, commands.MissingRequiredArgument):
+        error_message = (
+            "It looks like you're missing an argument! 🤔\n\n"
+            "Please use the correct format: `!rename <event_id> <new_name>`\n"
+            "**Example:** `!rename 1424971912928563281_1759810178 \"New Event Name\"`\n\n"
+            "You can only rename events that you created."
+        )
+        await ctx.send(error_message)
+    else:
+        await ctx.send("An unexpected error occurred. Please tell Waffle or Beetle.")
+        print(f"An unhandled error in rename_event occurred: {error}")
+
 @bot.command(name='help_events')
 async def help_events(ctx):
     """Show help for event commands"""
@@ -1075,6 +1177,12 @@ async def help_events(ctx):
     embed.add_field(
         name="👥 Find Missing Users",
         value=f"`{BOT_PREFIX}missing [EVENT_ID1 EVENT_ID2]`\nFind users who attended one event but missed another\n\n**Examples:**\n• `{BOT_PREFIX}missing` - Compare last two events\n• `{BOT_PREFIX}missing 1234567890_1234567890 1234567890_1234567891` - Compare specific events\n\nShows users who attended the second event but missed the first event.",
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔄 Rename Event",
+        value=f"`{BOT_PREFIX}rename EVENT_ID NEW_NAME`\nRename an event (only the event creator can rename their own events)\n\n**Examples:**\n• `{BOT_PREFIX}rename 1234567890_1234567890 \"Updated Event Name\"`\n• `{BOT_PREFIX}rename_event 1234567890_1234567890 \"New Name\"`\n\nUpdates both the Discord message and the event data in memory.",
         inline=False
     )
 
