@@ -451,10 +451,6 @@ class EventTracker:
                 creator_mention = field.value
                 if creator_mention.startswith("<@") and creator_mention.endswith(">"):
                     creator_id = int(creator_mention[2:-1])
-            elif field.name == "Created":
-                # Extract creation timestamp from embed field (format: YYYY-MM-DD HH:MM:SS)
-                # We don't need to parse this since we use the detected multiplier
-                pass
             elif field.name == "Manual Attendance":
                 # Extract manual attendance from embed field
                 manual_attendance = field.value
@@ -722,9 +718,7 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     # Format creation time
     created_time = get_pacific_now()
     created_time_str = created_time.strftime('%Y-%m-%d %H:%M:%S')
-    embed.add_field(name="Created", value=created_time_str, inline=True)
-    
-    embed.add_field(name="📊Summary", value=f"`!event_summary {event_id}`", inline=True)
+    embed.add_field(name="📊Summary", value=f"`!event_summary {created_time_str}`", inline=True)
     embed.set_footer(text=f"Event ID: {event_id}")
     
     event_message = await ctx.send(embed=embed)
