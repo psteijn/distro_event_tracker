@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-from discord.ui import View, Button
 import asyncio
 from datetime import datetime, timedelta
 import json
@@ -26,59 +25,6 @@ hundred_emoji = None
 seventy_five_emoji = None
 fifty_emoji = None
 twenty_five_emoji = None
-
-class EventSummaryView(View):
-    """View containing the button to get event summary via DM"""
-    
-    def __init__(self, event_id: str):
-        super().__init__(timeout=None)  # No timeout so button persists
-        self.event_id = event_id
-        
-        # Create the summary button
-        summary_button = Button(
-            label="📊 Summary",
-            style=discord.ButtonStyle.primary,
-            emoji="📧",
-            custom_id=f"summary_dm_{event_id}"
-        )
-        summary_button.callback = self.get_summary_callback
-        self.add_item(summary_button)
-    
-    async def get_summary_callback(self, interaction: discord.Interaction):
-        """Handle the summary button click"""
-        try:
-            # Defer the response since DM sending might take a moment
-            await interaction.response.defer(ephemeral=True)
-            
-            # Check if event exists
-            if self.event_id not in event_tracker.events:
-                await interaction.followup.send("❌ Event not found. It may have been deleted.", ephemeral=True)
-                return
-            
-            event = event_tracker.events[self.event_id]
-            
-            # Generate summary for this specific event
-            event_summary = generate_single_event_summary(event)
-            
-            try:
-                # Send DM to the user
-                await interaction.user.send(embed=event_summary)
-                
-                # Send confirmation in the original channel (ephemeral)
-                await interaction.followup.send("✅ Event summary sent to your DMs!", ephemeral=True)
-                
-                print(f"📧 DM summary sent to {interaction.user.name} for event {event['name']} (ID: {self.event_id})")
-                
-            except discord.Forbidden:
-                # User has DMs disabled
-                await interaction.followup.send("❌ I cannot send you a DM. Please enable DMs from server members.", ephemeral=True)
-            except Exception as e:
-                await interaction.followup.send(f"❌ Error sending DM: {str(e)}", ephemeral=True)
-                print(f"Error sending DM summary to {interaction.user.name}: {e}")
-                
-        except Exception as e:
-            await interaction.followup.send(f"❌ An error occurred: {str(e)}", ephemeral=True)
-            print(f"Error in summary button callback: {e}")
 
 def generate_single_event_summary(event: Dict) -> discord.Embed:
     """Generate a detailed summary embed for a single event"""
@@ -230,6 +176,54 @@ def calculate_event_weighted_scores(event: Dict) -> Dict[str, float]:
     
     # Sort by score (descending)
     return dict(sorted(user_scores.items(), key=lambda x: x[1], reverse=True))
+
+def generate_single_event_text_summary(event: Dict) -> str:
+    """Generate a text summary for a single event in the same format as the summary command"""
+    # Format creation time
+    created_time = datetime.fromtimestamp(event['created_at'], tz=PACIFIC_TZ)
+    created_time_str = created_time.strftime('%Y-%m-%d %H:%M:%S')
+    
+    # Start building the text output
+    text_output = f"📊 Event Attendance Summary\n"
+    text_output += f"Event: {event['name']}\n"
+    text_output += f"Created: {created_time_str}\n"
+    text_output += f"Total Attendees: {len(event['attendance']) + len(event.get('manual_attendance', []))}\n\n"
+    
+    # Build attendance list (same format as summary command)
+    attendees_list = []
+    
+    # Regular attendance (from reactions)
+    for user_id, (user_name, emojis) in event['attendance'].items():
+        attendees_list.append(user_name)
+    
+    # Manual attendance
+    for user_data in event.get('manual_attendance', []):
+        if isinstance(user_data, dict):
+            attendees_list.append(user_data['name'])
+        else:
+            attendees_list.append(str(user_data))
+    
+    # Add attendance line
+    if attendees_list:
+        text_output += f"{event['name']}: {', '.join(attendees_list)}\n"
+    else:
+        text_output += f"{event['name']}: (no attendees)\n"
+    
+    # Add event name line
+    text_output += f"\n-------\nEvents: {event['name']}\n"
+    
+    # Add weighted average summary for this single event
+    weighted_scores = calculate_event_weighted_scores(event)
+    if weighted_scores:
+        score_summary = []
+        for user_name, score in weighted_scores.items():
+            score_str = f"{score:.2f}".rstrip('0').rstrip('.')
+            score_summary.append(f"{user_name} ({score_str})")
+        text_output += f"ALL EVENTS: {', '.join(score_summary)}\n"
+    else:
+        text_output += "ALL EVENTS: No attendees found\n"
+    
+    return text_output
 
 class EventTracker:
     def __init__(self):
@@ -732,13 +726,11 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
         color=color
     )
     embed.add_field(name="Created by", value=ctx.author.mention, inline=True)
-    embed.add_field(name="Multiplier", value=f"{multiplier}x", inline=False)
+    embed.add_field(name="Multiplier", value=f"{multiplier}x", inline=True)
+    embed.add_field(name="📊Summary", value=f"`!event_summary {event_id}`", inline=True)
     embed.set_footer(text=f"Event ID: {event_id}")
     
-    # Create the view with the summary button
-    view = EventSummaryView(event_id)
-    
-    event_message = await ctx.send(embed=embed, view=view)
+    event_message = await ctx.send(embed=embed)
 
     await event_message.add_reaction(hundred_emoji)
     await event_message.add_reaction(seventy_five_emoji)
@@ -914,48 +906,6 @@ async def on_reaction_remove(reaction, user):
         event_tracker.remove_attendance(event_id, user.id, user.name, emoji_str)
         print(f"Removed attendance: User {user.name} ({user.id}) removed {emoji_str} from event {event_id}")  # user.name is the account name
 
-@bot.event
-async def on_interaction(interaction: discord.Interaction):
-    """Handle button interactions for event summaries"""
-    if interaction.type == discord.InteractionType.component:
-        # Check if this is a summary button click
-        if interaction.data.get('custom_id', '').startswith('summary_dm_'):
-            try:
-                # Extract event ID from custom_id
-                event_id = interaction.data['custom_id'].replace('summary_dm_', '')
-                
-                # Check if event exists
-                if event_id not in event_tracker.events:
-                    await interaction.response.send_message("❌ Event not found. It may have been deleted.", ephemeral=True)
-                    return
-                
-                event = event_tracker.events[event_id]
-                
-                # Defer the response since DM sending might take a moment
-                await interaction.response.defer(ephemeral=True)
-                
-                # Generate summary for this specific event
-                event_summary = generate_single_event_summary(event)
-                
-                try:
-                    # Send DM to the user
-                    await interaction.user.send(embed=event_summary)
-                    
-                    # Send confirmation in the original channel (ephemeral)
-                    await interaction.followup.send("✅ Event summary sent to your DMs!", ephemeral=True)
-                    
-                    print(f"📧 DM summary sent to {interaction.user.name} for event {event['name']} (ID: {event_id})")
-                    
-                except discord.Forbidden:
-                    # User has DMs disabled
-                    await interaction.followup.send("❌ I cannot send you a DM. Please enable DMs from server members.", ephemeral=True)
-                except Exception as e:
-                    await interaction.followup.send(f"❌ Error sending DM: {str(e)}", ephemeral=True)
-                    print(f"Error sending DM summary to {interaction.user.name}: {e}")
-                    
-            except Exception as e:
-                await interaction.response.send_message(f"❌ An error occurred: {str(e)}", ephemeral=True)
-                print(f"Error in summary button interaction: {e}")
 
 @bot.command(name='event_summary')
 async def event_summary(ctx, identifier: str):
@@ -1013,11 +963,11 @@ async def event_summary(ctx, identifier: str):
             await ctx.send(f"❌ No event found with identifier: {identifier}")
             return
         
-        # Generate the summary embed
-        summary_embed = generate_single_event_summary(event)
+        # Generate the text summary
+        summary_text = generate_single_event_text_summary(event)
         
-        # Send the summary
-        await ctx.send(embed=summary_embed)
+        # Send the summary in the same format as the summary command
+        await ctx.send(f"```\n{summary_text}\n```")
         
         print(f"📊 Event summary requested by {ctx.author.name} for event {event['name']} (ID: {identifier})")
         
