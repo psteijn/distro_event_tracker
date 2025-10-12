@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord.ui import View, Button
 import asyncio
 from datetime import datetime, timedelta
 import json
@@ -25,6 +26,210 @@ hundred_emoji = None
 seventy_five_emoji = None
 fifty_emoji = None
 twenty_five_emoji = None
+
+class EventSummaryView(View):
+    """View containing the button to get event summary via DM"""
+    
+    def __init__(self, event_id: str):
+        super().__init__(timeout=None)  # No timeout so button persists
+        self.event_id = event_id
+        
+        # Create the summary button
+        summary_button = Button(
+            label="📊 Summary",
+            style=discord.ButtonStyle.primary,
+            emoji="📧",
+            custom_id=f"summary_dm_{event_id}"
+        )
+        summary_button.callback = self.get_summary_callback
+        self.add_item(summary_button)
+    
+    async def get_summary_callback(self, interaction: discord.Interaction):
+        """Handle the summary button click"""
+        try:
+            # Defer the response since DM sending might take a moment
+            await interaction.response.defer(ephemeral=True)
+            
+            # Check if event exists
+            if self.event_id not in event_tracker.events:
+                await interaction.followup.send("❌ Event not found. It may have been deleted.", ephemeral=True)
+                return
+            
+            event = event_tracker.events[self.event_id]
+            
+            # Generate summary for this specific event
+            event_summary = generate_single_event_summary(event)
+            
+            try:
+                # Send DM to the user
+                await interaction.user.send(embed=event_summary)
+                
+                # Send confirmation in the original channel (ephemeral)
+                await interaction.followup.send("✅ Event summary sent to your DMs!", ephemeral=True)
+                
+                print(f"📧 DM summary sent to {interaction.user.name} for event {event['name']} (ID: {self.event_id})")
+                
+            except discord.Forbidden:
+                # User has DMs disabled
+                await interaction.followup.send("❌ I cannot send you a DM. Please enable DMs from server members.", ephemeral=True)
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error sending DM: {str(e)}", ephemeral=True)
+                print(f"Error sending DM summary to {interaction.user.name}: {e}")
+                
+        except Exception as e:
+            await interaction.followup.send(f"❌ An error occurred: {str(e)}", ephemeral=True)
+            print(f"Error in summary button callback: {e}")
+
+def generate_single_event_summary(event: Dict) -> discord.Embed:
+    """Generate a detailed summary embed for a single event"""
+    embed = discord.Embed(
+        title=f"📊 Event Summary: {event['name']}",
+        color=discord.Color.blue()
+    )
+    
+    # Add event details
+    embed.add_field(
+        name="Event ID",
+        value=event['id'],
+        inline=True
+    )
+    
+    # Format creation time
+    created_time = datetime.fromtimestamp(event['created_at'], tz=PACIFIC_TZ)
+    embed.add_field(
+        name="Created",
+        value=f"<t:{int(event['created_at'])}:F>\n(<t:{int(event['created_at'])}:R>)",
+        inline=True
+    )
+    
+    embed.add_field(
+        name="Multiplier",
+        value=f"{event['multiplier']}x",
+        inline=True
+    )
+    
+    # Get creator name
+    creator_name = "Unknown"
+    try:
+        # Try to get the creator from the bot's user cache
+        creator = bot.get_user(event['creator_id'])
+        if creator:
+            creator_name = creator.name
+    except:
+        pass
+    
+    embed.add_field(
+        name="Created by",
+        value=creator_name,
+        inline=True
+    )
+    
+    # Process attendance
+    total_attendees = len(event['attendance']) + len(event.get('manual_attendance', []))
+    embed.add_field(
+        name="Total Attendees",
+        value=str(total_attendees),
+        inline=True
+    )
+    
+    # Add attendance breakdown
+    if event['attendance'] or event.get('manual_attendance'):
+        attendance_text = []
+        
+        # Regular attendance (from reactions)
+        for user_id, (user_name, emojis) in event['attendance'].items():
+            emoji_text = " ".join(emojis) if emojis else "❓"
+            attendance_text.append(f"{emoji_text} {user_name}")
+        
+        # Manual attendance
+        for user_data in event.get('manual_attendance', []):
+            if isinstance(user_data, dict):
+                emoji_text = multiplier_to_emoji_string(user_data['multiplier'])
+                attendance_text.append(f"{emoji_text} {user_data['name']}")
+            else:
+                attendance_text.append(f"✅ {str(user_data)}")
+        
+        # Split into chunks if too long
+        if len(attendance_text) > 20:
+            # Split into multiple fields
+            chunks = [attendance_text[i:i+20] for i in range(0, len(attendance_text), 20)]
+            for i, chunk in enumerate(chunks):
+                field_name = f"Attendees (Part {i+1})" if len(chunks) > 1 else "Attendees"
+                embed.add_field(
+                    name=field_name,
+                    value="\n".join(chunk),
+                    inline=False
+                )
+        else:
+            embed.add_field(
+                name="Attendees",
+                value="\n".join(attendance_text),
+                inline=False
+            )
+    else:
+        embed.add_field(
+            name="Attendees",
+            value="No attendees yet",
+            inline=False
+        )
+    
+    # Add weighted score calculation
+    if event['attendance'] or event.get('manual_attendance'):
+        weighted_scores = calculate_event_weighted_scores(event)
+        if weighted_scores:
+            score_text = []
+            for user_name, score in weighted_scores.items():
+                score_str = f"{score:.2f}".rstrip('0').rstrip('.')
+                score_text.append(f"{user_name}: {score_str}")
+            
+            embed.add_field(
+                name="Weighted Scores",
+                value="\n".join(score_text),
+                inline=False
+            )
+    
+    embed.set_footer(text=f"Event ID: {event['id']}")
+    embed.timestamp = datetime.now(PACIFIC_TZ)
+    
+    return embed
+
+def calculate_event_weighted_scores(event: Dict) -> Dict[str, float]:
+    """Calculate weighted scores for attendees of a single event"""
+    user_scores = {}
+    event_multiplier = event.get('multiplier', 1.0)
+    
+    # Process regular attendance
+    for user_id, (user_name, emojis) in event['attendance'].items():
+        participation_multiplier = 0.0
+        for emoji in emojis:
+            # Extract emoji name from Discord emoji string
+            emoji_name = None
+            if emoji.startswith('<:') and emoji.endswith('>'):
+                emoji_name = emoji.split(':')[1]
+            else:
+                emoji_name = emoji
+            
+            # Determine participation multiplier based on emoji
+            if emoji_name == EMOJI_HUNDRED:
+                participation_multiplier = max(participation_multiplier, 1.0)
+            elif emoji_name == EMOJI_SEVENTY_FIVE:
+                participation_multiplier = max(participation_multiplier, 0.75)
+            elif emoji_name == EMOJI_FIFTY:
+                participation_multiplier = max(participation_multiplier, 0.5)
+            elif emoji_name == EMOJI_TWENTY_FIVE:
+                participation_multiplier = max(participation_multiplier, 0.25)
+        
+        user_scores[user_name] = event_multiplier * participation_multiplier
+    
+    # Process manual attendance
+    for user_data in event.get('manual_attendance', []):
+        if isinstance(user_data, dict):
+            user_name = user_data['name']
+            user_multiplier = user_data['multiplier']
+            user_scores[user_name] = event_multiplier * user_multiplier
+    
+    # Sort by score (descending)
+    return dict(sorted(user_scores.items(), key=lambda x: x[1], reverse=True))
 
 class EventTracker:
     def __init__(self):
@@ -523,14 +728,17 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     # Send event message
     embed = discord.Embed(
         title=f"{emoji} {event_name}",
-        description=f"React with {hundred_emoji} {seventy_five_emoji} {fifty_emoji} {twenty_five_emoji} to register your attendance!\n{hundred_emoji} is full attendance, the others are partial attendance. ",
+        description=f"React with {hundred_emoji} {seventy_five_emoji} {fifty_emoji} {twenty_five_emoji} to register your attendance!\n{hundred_emoji} is full attendance, the others are partial attendance.",
         color=color
     )
     embed.add_field(name="Created by", value=ctx.author.mention, inline=True)
     embed.add_field(name="Multiplier", value=f"{multiplier}x", inline=False)
     embed.set_footer(text=f"Event ID: {event_id}")
     
-    event_message = await ctx.send(embed=embed)
+    # Create the view with the summary button
+    view = EventSummaryView(event_id)
+    
+    event_message = await ctx.send(embed=embed, view=view)
 
     await event_message.add_reaction(hundred_emoji)
     await event_message.add_reaction(seventy_five_emoji)
@@ -705,6 +913,136 @@ async def on_reaction_remove(reaction, user):
         emoji_str = str(reaction.emoji)
         event_tracker.remove_attendance(event_id, user.id, user.name, emoji_str)
         print(f"Removed attendance: User {user.name} ({user.id}) removed {emoji_str} from event {event_id}")  # user.name is the account name
+
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    """Handle button interactions for event summaries"""
+    if interaction.type == discord.InteractionType.component:
+        # Check if this is a summary button click
+        if interaction.data.get('custom_id', '').startswith('summary_dm_'):
+            try:
+                # Extract event ID from custom_id
+                event_id = interaction.data['custom_id'].replace('summary_dm_', '')
+                
+                # Check if event exists
+                if event_id not in event_tracker.events:
+                    await interaction.response.send_message("❌ Event not found. It may have been deleted.", ephemeral=True)
+                    return
+                
+                event = event_tracker.events[event_id]
+                
+                # Defer the response since DM sending might take a moment
+                await interaction.response.defer(ephemeral=True)
+                
+                # Generate summary for this specific event
+                event_summary = generate_single_event_summary(event)
+                
+                try:
+                    # Send DM to the user
+                    await interaction.user.send(embed=event_summary)
+                    
+                    # Send confirmation in the original channel (ephemeral)
+                    await interaction.followup.send("✅ Event summary sent to your DMs!", ephemeral=True)
+                    
+                    print(f"📧 DM summary sent to {interaction.user.name} for event {event['name']} (ID: {event_id})")
+                    
+                except discord.Forbidden:
+                    # User has DMs disabled
+                    await interaction.followup.send("❌ I cannot send you a DM. Please enable DMs from server members.", ephemeral=True)
+                except Exception as e:
+                    await interaction.followup.send(f"❌ Error sending DM: {str(e)}", ephemeral=True)
+                    print(f"Error sending DM summary to {interaction.user.name}: {e}")
+                    
+            except Exception as e:
+                await interaction.response.send_message(f"❌ An error occurred: {str(e)}", ephemeral=True)
+                print(f"Error in summary button interaction: {e}")
+
+@bot.command(name='event_summary')
+async def event_summary(ctx, identifier: str):
+    """Get a detailed summary for a specific event by ID or timestamp
+    
+    Usage:
+    !event_summary EVENT_ID - Get summary for specific event
+    !event_summary TIMESTAMP - Get summary for event closest to timestamp
+    
+    Examples:
+    !event_summary 1424971912928563281_1759810178
+    !event_summary 2024-01-15
+    !event_summary 2024-01-15 14:30:00
+    """
+    try:
+        event = None
+        
+        # First, try to find by event ID (exact match)
+        if identifier in event_tracker.events:
+            event = event_tracker.events[identifier]
+            print(f"Found event by ID: {event['name']} (ID: {identifier})")
+        else:
+            # Try to parse as timestamp and find closest event
+            try:
+                target_timestamp = parse_timestamp(identifier).timestamp()
+                print(f"Looking for event closest to timestamp: {identifier} ({target_timestamp})")
+                
+                # Find the event with timestamp closest to the target
+                closest_event = None
+                closest_distance = float('inf')
+                
+                for event_id, event_data in event_tracker.events.items():
+                    event_timestamp = event_data['created_at']
+                    distance = abs(event_timestamp - target_timestamp)
+                    
+                    if distance < closest_distance:
+                        closest_distance = distance
+                        closest_event = event_data
+                        closest_event_id = event_id
+                
+                if closest_event:
+                    event = closest_event
+                    identifier = closest_event_id  # Update identifier for display
+                    distance_hours = closest_distance / 3600  # Convert to hours
+                    print(f"Found closest event: {event['name']} (ID: {identifier}, {distance_hours:.1f} hours away)")
+                else:
+                    await ctx.send(f"❌ No events found near timestamp: {identifier}")
+                    return
+                    
+            except ValueError as e:
+                await ctx.send(f"❌ Invalid identifier format: {identifier}\n\n**Usage:**\n• `!event_summary EVENT_ID` - Get summary for specific event\n• `!event_summary TIMESTAMP` - Get summary for event closest to timestamp\n\n**Examples:**\n• `!event_summary 1424971912928563281_1759810178`\n• `!event_summary 2024-01-15`\n• `!event_summary 2024-01-15 14:30:00`")
+                return
+        
+        if not event:
+            await ctx.send(f"❌ No event found with identifier: {identifier}")
+            return
+        
+        # Generate the summary embed
+        summary_embed = generate_single_event_summary(event)
+        
+        # Send the summary
+        await ctx.send(embed=summary_embed)
+        
+        print(f"📊 Event summary requested by {ctx.author.name} for event {event['name']} (ID: {identifier})")
+        
+    except Exception as e:
+        await ctx.send(f"❌ An error occurred while generating the event summary: {str(e)}")
+        print(f"Error in event_summary command: {e}")
+
+@event_summary.error
+async def event_summary_error(ctx, error):
+    if isinstance(error, commands.MissingRequiredArgument):
+        error_message = (
+            "It looks like you're missing the event identifier! 🤔\n\n"
+            "**Usage:**\n"
+            "• `!event_summary EVENT_ID` - Get summary for specific event\n"
+            "• `!event_summary TIMESTAMP` - Get summary for event closest to timestamp\n\n"
+            "**Examples:**\n"
+            "• `!event_summary 1424971912928563281_1759810178`\n"
+            "• `!event_summary 2024-01-15`\n"
+            "• `!event_summary 2024-01-15 14:30:00`\n\n"
+            "The command will find the event with the timestamp closest to your input."
+        )
+        await ctx.send(error_message)
+    else:
+        await ctx.send("An unexpected error occurred. Please tell Waffle or Beetle.")
+        print(f"An unhandled error in event_summary occurred: {error}")
 
 @bot.command(name='summary')
 async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None):
@@ -1163,6 +1501,12 @@ async def help_events(ctx):
     )
     
     embed.add_field(
+        name="📋 Single Event Summary",
+        value=f"`{BOT_PREFIX}event_summary EVENT_ID_OR_TIMESTAMP`\nGet a detailed summary for a specific event by ID or timestamp\n\n**Usage:**\n• `{BOT_PREFIX}event_summary EVENT_ID` - Get summary for specific event\n• `{BOT_PREFIX}event_summary TIMESTAMP` - Get summary for event closest to timestamp\n\n**Examples:**\n• `{BOT_PREFIX}event_summary 1424971912928563281_1759810178`\n• `{BOT_PREFIX}event_summary 2024-01-15`\n• `{BOT_PREFIX}event_summary 2024-01-15 14:30:00`\n\nWhen using a timestamp, finds the event created closest to that time.",
+        inline=False
+    )
+    
+    embed.add_field(
         name="👥 Add Users to Event",
         value=f"`{BOT_PREFIX}add_users EVENT_ID MULTIPLIER @user1 @user2 @user3`\nManually add users to an existing event with fixed multiplier scoring\n\n**Examples:**\n• `{BOT_PREFIX}add_users 1234567890_1234567890 1.0 @alice @bob` (full attendance)\n• `{BOT_PREFIX}add_users 1234567890_1234567890 0.75 @charlie` (partial attendance)\n• `{BOT_PREFIX}add_users 1234567890_1234567890 0.5 @david` (half attendance)\n• `{BOT_PREFIX}add_users 1234567890_1234567890 0.25 @eve` (quarter attendance)\n\n**Fixed Multipliers:** 1.0 (full), 0.75 (partial), 0.5 (half), 0.25 (quarter). Updates the original event message automatically.",
         inline=False
@@ -1195,6 +1539,12 @@ async def help_events(ctx):
     embed.add_field(
         name="❓ Help",
         value=f"`{BOT_PREFIX}help_events`\nShows this help message",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📧 Get Event Summary in DM",
+        value="Every event message now includes a **📊 Get Summary in DM** button. Click it to receive a detailed summary of that specific event in your DMs, including:\n• Complete attendee list with emoji reactions\n• Individual weighted scores for each participant\n• Event details (creator, multiplier, creation time)\n• Manual attendance entries\n\nPerfect for getting detailed info without cluttering the channel!",
         inline=False
     )
     
