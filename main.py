@@ -723,14 +723,17 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     
     event_message = await ctx.send(embed=embed)
 
+    # Update event with the actual message ID
+    # NOTE: do this before the reactions below, otherwise fast clicking users can react before these
+    # lines execute.
+    event['message_id'] = event_message.id
+    event_tracker.events[event_id]['message_id'] = event_message.id
+
+    # Add the four "default" reaction emojis that allow people to record their attendance.
     await event_message.add_reaction(hundred_emoji)
     await event_message.add_reaction(seventy_five_emoji)
     await event_message.add_reaction(fifty_emoji)
     await event_message.add_reaction(twenty_five_emoji)
-    
-    # Update event with the actual message ID
-    event['message_id'] = event_message.id
-    event_tracker.events[event_id]['message_id'] = event_message.id
 
 @bot.command(name='dungeon')
 async def dungeon(ctx, *, dungeon_name: str):
