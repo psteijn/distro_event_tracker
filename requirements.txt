@@ -4,3 +4,5 @@ pytz==2025.2
 asyncio
 datetime
 typing
+pytest
+pytest-asyncio
