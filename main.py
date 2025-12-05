@@ -285,7 +285,8 @@ class EventTracker:
                 event['manual_attendance'] = []
             
             total_attendees = len(event['attendance']) + len(event['manual_attendance'])
-            attendance_by_user = event['attendance']
+            # Start from a shallow copy so we don't mutate the original attendance dict
+            attendance_by_user = dict(event['attendance'])
             for user_data in event['manual_attendance']:
                 user_name = user_data['name']
                 user_multiplier = user_data['multiplier']
@@ -300,7 +301,7 @@ class EventTracker:
                 'name': event['name'],
                 'multiplier': event['multiplier'],
                 'created_at': event['created_at'],
-                'total_attendees': len(event['attendance']) + len(event['manual_attendance']),
+                'total_attendees': len(attendance_by_user),
                 'attendance_by_user': attendance_by_user
             }
             summary['events'].append(event_summary)
