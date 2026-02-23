@@ -1,6 +1,8 @@
-discord.py==2.3.2
+discord.py==2.6.4
 python-dotenv==1.0.0
 pytz==2025.2
 asyncio
 datetime
 typing
+pytest
+pytest-asyncio
