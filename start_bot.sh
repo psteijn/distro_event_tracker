@@ -19,7 +19,7 @@ if [ ! -f ".env" ]; then
     echo
     echo "Please edit .env file and add your Discord bot token, then run this script again."
     read -p "Press Enter to exit..."
-    exit 0
+    exit 1
 fi
 
 # Check if Discord token is set

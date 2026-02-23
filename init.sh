@@ -26,7 +26,14 @@ fi
 # Activate virtual environment
 echo
 echo "Activating virtual environment..."
-source venv/Scripts/activate
+if [ -f "venv/Scripts/activate" ]; then
+    source venv/Scripts/activate
+elif [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+else
+    echo "ERROR: Could not find virtual environment activation script."
+    exit 1
+fi
 
 # Install/update dependencies
 echo
