@@ -26,6 +26,7 @@ echo.
 echo Bot is starting... Press Ctrl+C to stop the bot
 echo.
 
+set PYTHONIOENCODING=utf-8
 python main.py
 
 REM If we get here, the bot stopped

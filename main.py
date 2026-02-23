@@ -1,12 +1,17 @@
 import discord
 from discord.ext import commands
 import asyncio
+import sys
 from datetime import datetime, timedelta
 import json
 import os
 from typing import Dict, List, Optional
 import pytz
 from config import DISCORD_TOKEN, BOT_PREFIX, EVENT_CHANNEL_ID, EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE
+
+# Ensure stdout supports UTF-8 for printing emojis to console
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 # Pacific timezone (handles daylight savings automatically)
 PACIFIC_TZ = pytz.timezone('US/Pacific')

@@ -41,6 +41,7 @@ echo
 echo "Bot is starting... Press Ctrl+C to stop the bot"
 echo
 
+export PYTHONIOENCODING=utf-8
 python main.py
 
 # If we get here, the bot stopped
