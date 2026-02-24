@@ -245,7 +245,7 @@ class EventTracker:
     def __init__(self):
         self.events = {}
     
-    def create_event(self, event_id: str, name: str, channel_id: int, message_id: int, creator_id: int, multiplier: float = 1.0) -> Dict:
+    def create_event(self, event_id: str, name: str, channel_id: int, message_id: int, creator_id: int, created_at: float, multiplier: float = 1.0) -> Dict:
         """Create a new event with a multiplier for scoring"""
         event = {
             'id': event_id,
@@ -253,7 +253,7 @@ class EventTracker:
             'channel_id': channel_id,
             'message_id': message_id,
             'creator_id': creator_id,
-            'created_at': get_pacific_now().timestamp(),
+            'created_at': created_at,
             'multiplier': multiplier,
             'attendance': {},
             'manual_attendance': []
@@ -289,7 +289,35 @@ class EventTracker:
             
             if start_timestamp_sec <= event_timestamp_sec <= end_timestamp_sec:
                 filtered_events.append(event)
-        return filtered_events
+        
+        # Always return sorted by time
+        return sorted(filtered_events, key=lambda x: x['created_at'])
+
+    def get_events_between_ids(self, start_id: str, end_id: str) -> List[Dict]:
+        """Get all events between two specific IDs (inclusive)"""
+        # Sort all events chronologically
+        all_events = sorted(self.events.values(), key=lambda x: x['created_at'])
+        
+        start_idx = -1
+        end_idx = -1
+        
+        for i, event in enumerate(all_events):
+            if event['id'] == start_id:
+                start_idx = i
+            if event['id'] == end_id:
+                end_idx = i
+                
+        if start_idx != -1 and end_idx != -1:
+            # Ensure range is correct even if IDs were provided out of order
+            s, e = min(start_idx, end_idx), max(start_idx, end_idx)
+            return all_events[s:e+1]
+        
+        return []
+
+    def get_last_n_events(self, n: int) -> List[Dict]:
+        """Get the most recent N events"""
+        all_events = sorted(self.events.values(), key=lambda x: x['created_at'], reverse=True)
+        return sorted(all_events[:n], key=lambda x: x['created_at'])
     
     def generate_summary(self, events: List[Dict]) -> Dict:
         """Generate attendance summary for events"""
@@ -719,7 +747,8 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
         return
     
     # Generate unique event ID
-    event_id = f"{ctx.message.id}_{int(get_pacific_now().timestamp())}"
+    created_time = ctx.message.created_at.astimezone(PACIFIC_TZ)
+    event_id = f"{ctx.message.id}_{int(created_time.timestamp())}"
     
     # Create event with multiplier
     event = event_tracker.create_event(
@@ -728,6 +757,7 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
         channel_id=ctx.channel.id,
         message_id=ctx.message.id,
         creator_id=ctx.author.id,
+        created_at=created_time.timestamp(),
         multiplier=multiplier
     )
     
@@ -740,9 +770,8 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     embed.add_field(name="Created by", value=ctx.author.mention, inline=True)
     
     # Format creation time
-    created_time = get_pacific_now()
     created_time_str = created_time.strftime('%Y-%m-%d %H:%M:%S')
-    embed.add_field(name="📊Summary", value=f"`!event_summary {created_time_str}`", inline=True)
+    embed.add_field(name="📊Summary", value=f"`!summary {event_id}`", inline=True)
     embed.set_footer(text=f"Event ID: {event_id}")
     
     event_message = await ctx.send(embed=embed)
@@ -925,144 +954,93 @@ async def on_reaction_remove(reaction, user):
         print(f"Removed attendance: User {user.name} ({user.id}) removed {emoji_str} from event {event_id}")  # user.name is the account name
 
 
-@bot.command(name='event_summary')
-async def event_summary(ctx, identifier: str):
-    """Get a detailed summary for a specific event by ID or timestamp
+@bot.command(name='summary')
+async def summary(ctx, *, args: str = ""):
+    """Generate attendance summary for events
     
     Usage:
-    !event_summary EVENT_ID - Get summary for specific event
-    !event_summary TIMESTAMP - Get summary for event closest to timestamp
-    
-    Examples:
-    !event_summary 1424971912928563281_1759810178
-    !event_summary 2024-01-15
-    !event_summary 2024-01-15 14:30:00
+    !summary EVENT_ID - Summary for a single event
+    !summary ID1 ID2 - Summary for range of events (inclusive)
+    !summary last N - Summary for the last N events
+    !summary YYYY-MM-DD [YYYY-MM-DD] - Summary for date range
     """
     try:
-        event = None
+        events_to_summarize = []
+        arg_list = args.split()
         
-        # First, try to find by event ID (exact match)
-        if identifier in event_tracker.events:
-            event = event_tracker.events[identifier]
-            print(f"Found event by ID: {event['name']} (ID: {identifier})")
-        else:
-            # Try to parse as timestamp and find closest event
+        # 1. Handle "last N"
+        if len(arg_list) >= 2 and arg_list[0].lower() == "last":
             try:
-                target_timestamp = parse_timestamp(identifier).timestamp()
-                print(f"Looking for event closest to timestamp: {identifier} ({target_timestamp})")
-                
-                # Find the event with timestamp closest to the target
-                closest_event = None
-                closest_distance = float('inf')
-                
-                for event_id, event_data in event_tracker.events.items():
-                    event_timestamp = event_data['created_at']
-                    distance = abs(event_timestamp - target_timestamp)
-                    
-                    if distance < closest_distance:
-                        closest_distance = distance
-                        closest_event = event_data
-                        closest_event_id = event_id
-                
-                if closest_event:
-                    event = closest_event
-                    identifier = closest_event_id  # Update identifier for display
-                    distance_hours = closest_distance / 3600  # Convert to hours
-                    print(f"Found closest event: {event['name']} (ID: {identifier}, {distance_hours:.1f} hours away)")
+                n = int(arg_list[1])
+                events_to_summarize = event_tracker.get_last_n_events(n)
+                summary_title = f"Last {len(events_to_summarize)} Events"
+            except ValueError:
+                await ctx.send("❌ Please provide a number for 'last'. Example: `!summary last 5`.")
+                return
+
+        # 2. Handle ID-to-ID or Single ID
+        elif len(arg_list) > 0 and "_" in arg_list[0]:
+            if len(arg_list) >= 2 and "_" in arg_list[1]:
+                # Range of IDs
+                events_to_summarize = event_tracker.get_events_between_ids(arg_list[0], arg_list[1])
+                summary_title = f"Range: {arg_list[0]} to {arg_list[1]}"
+            else:
+                # Single ID
+                if arg_list[0] in event_tracker.events:
+                    events_to_summarize = [event_tracker.events[arg_list[0]]]
+                    summary_title = f"Single Event: {events_to_summarize[0]['name']}"
                 else:
-                    await ctx.send(f"❌ No events found near timestamp: {identifier}")
+                    await ctx.send(f"❌ Event ID `{arg_list[0]}` not found.")
                     return
-                    
-            except ValueError as e:
-                await ctx.send(f"❌ Invalid identifier format: {identifier}\n\n**Usage:**\n• `!event_summary EVENT_ID` - Get summary for specific event\n• `!event_summary TIMESTAMP` - Get summary for event closest to timestamp\n\n**Examples:**\n• `!event_summary 1424971912928563281_1759810178`\n• `!event_summary 2024-01-15`\n• `!event_summary 2024-01-15 14:30:00`")
+
+        # 3. Handle Timestamps (Legacy/Fallback)
+        elif len(arg_list) > 0:
+            try:
+                # Attempt to parse as start [end] timestamps
+                # This is greedy and handles spaces/quotes poorly in basic split, 
+                # but we'll try to find at least one valid date.
+                start_dt = parse_timestamp(arg_list[0])
+                start_ts = start_dt.timestamp()
+                
+                if len(arg_list) >= 2:
+                    end_dt = parse_timestamp(arg_list[1])
+                    # If end is just a date, set to end of day
+                    if len(arg_list[1]) <= 10:
+                        end_dt = end_dt.replace(hour=23, minute=59, second=59)
+                else:
+                    end_dt = get_pacific_now()
+                
+                end_ts = end_dt.timestamp()
+                events_to_summarize = event_tracker.get_events_in_range(start_ts, end_ts)
+                summary_title = f"Range: {arg_list[0]}" + (f" to {arg_list[1]}" if len(arg_list) >= 2 else " onwards")
+                
+            except ValueError:
+                await ctx.send("❌ Could not parse input. Use `!summary help` for usage info.")
                 return
         
-        if not event:
-            await ctx.send(f"❌ No event found with identifier: {identifier}")
-            return
-        
-        # Generate the text summary
-        summary_text = generate_single_event_text_summary(event)
-        
-        # Send the summary in the same format as the summary command
-        await ctx.send(f"```\n{summary_text}\n```")
-        
-        print(f"📊 Event summary requested by {ctx.author.name} for event {event['name']} (ID: {identifier})")
-        
-    except Exception as e:
-        await ctx.send(f"❌ An error occurred while generating the event summary: {str(e)}")
-        print(f"Error in event_summary command: {e}")
-
-@event_summary.error
-async def event_summary_error(ctx, error):
-    if isinstance(error, commands.MissingRequiredArgument):
-        error_message = (
-            "It looks like you're missing the event identifier! 🤔\n\n"
-            "**Usage:**\n"
-            "• `!event_summary EVENT_ID` - Get summary for specific event\n"
-            "• `!event_summary TIMESTAMP` - Get summary for event closest to timestamp\n\n"
-            "**Examples:**\n"
-            "• `!event_summary 1424971912928563281_1759810178`\n"
-            "• `!event_summary 2024-01-15`\n"
-            "• `!event_summary 2024-01-15 14:30:00`\n\n"
-            "The command will find the event with the timestamp closest to your input."
-        )
-        await ctx.send(error_message)
-    else:
-        await ctx.send("An unexpected error occurred. Please tell Waffle or Beetle.")
-        logger.error(f"An unhandled error in event_summary occurred: {error}")
-
-@bot.command(name='summary')
-async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None):
-    """Generate attendance summary for events in a date range
-    
-    Supports multiple timestamp formats:
-    - YYYY-MM-DD (date only)
-    - YYYY-MM-DD HH:MM:SS (full timestamp)
-    - YYYY-MM-DD HH:MM (date with time)
-    - YYYY/MM/DD (alternative date format)
-    - MM/DD/YYYY (US date format)
-    - Epoch timestamp (seconds since 1970-01-01)
-    
-    If only one timestamp is provided, fetches all events after that timestamp.
-    """
-    try:
-        # Parse start timestamp
-        start_timestamp_sec = parse_timestamp(start_timestamp).timestamp()
-        
-        # Parse end timestamp or set to current time if not provided
-        if end_timestamp is None:
-            end_dt = get_pacific_now()
         else:
-            end_dt = parse_timestamp(end_timestamp)
-            # If only date was provided, extend end time to end of day
-            if len(end_timestamp.split()) == 1 and not end_timestamp.isdigit():
-                end_dt = end_dt.replace(hour=23, minute=59, second=59)
-        end_timestamp_sec = end_dt.timestamp()
-        
-        # Get events in range
-        events_in_range = event_tracker.get_events_in_range(start_timestamp_sec, end_timestamp_sec)
-        
-        if not events_in_range:
-            if end_timestamp is None:
-                await ctx.send(f"No events found after {start_timestamp}")
-            else:
-                await ctx.send(f"No events found in the date range {start_timestamp} to {end_timestamp}")
+            # No args - default to last event
+            events_to_summarize = event_tracker.get_last_n_events(1)
+            summary_title = "Latest Event"
+
+        if not events_to_summarize:
+            await ctx.send("❌ No events found for the specified criteria.")
             return
-        
+
         # Generate summary
-        summary = event_tracker.generate_summary(events_in_range)
+        summary_data = event_tracker.generate_summary(events_to_summarize)
         
-        # Create simple text format
+        # Create verification header
+        first_event = events_to_summarize[0]
+        last_event = events_to_summarize[-1]
+        
         text_output = f"📊 Event Attendance Summary\n"
-        if end_timestamp is None:
-            text_output += f"Events after {start_timestamp}\n"
-        else:
-            text_output += f"Events from {start_timestamp} to {end_timestamp}\n"
-        text_output += f"Total Events: {summary['total_events']}\n\n"
+        text_output += f"Context: {summary_title}\n"
+        text_output += f"Range: {first_event['name']} -> {last_event['name']}\n"
+        text_output += f"Total Events: {len(events_to_summarize)}\n\n"
         
-        # Add event details in simple format
-        for event in summary['events']:
+        # Add event details
+        for event in summary_data['events']:
             attendees_list = []
             for user_id, (user_name, emojis) in event['attendance_by_user'].items():
                 attendees_list.append(f"{user_name}")
@@ -1072,36 +1050,25 @@ async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None)
             else:
                 text_output += f"{event['name']}: (no attendees)\n"
         
-        # Add event names line
-        event_names = [event['name'] for event in summary['events']]
+        # Add event names line for easy auditing
+        event_names = [event['name'] for event in summary_data['events']]
         text_output += f"\n-------\nEvents: {', '.join(event_names)}\n"
         
         # Add weighted average summary
-        weighted_summary = event_tracker.calculate_weighted_average(summary['events'])
+        weighted_summary = event_tracker.calculate_weighted_average(summary_data['events'])
         text_output += f"{weighted_summary}\n"
         
-        # Send the text output
+        # Send output
         if len(text_output) > 2000:
-            # Split into multiple messages if too long
             chunks = [text_output[i:i+1900] for i in range(0, len(text_output), 1900)]
             for chunk in chunks:
                 await ctx.send(f"```\n{chunk}\n```")
         else:
             await ctx.send(f"```\n{text_output}\n```")
             
-    except ValueError as e:
-        await ctx.send(f"Invalid timestamp format. Error: {str(e)}")
-        logger.error(f"Error parsing timestamp in summary command: {e}")
     except Exception as e:
-        await ctx.send(f"An error occurred while generating the summary: {str(e)}")
+        await ctx.send(f"❌ An error occurred: {str(e)}")
         logger.error(f"Error in summary command: {e}")
-
-@generate_summary.error
-async def generate_summary_error(ctx, error):
-    if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(f"❌ Missing start date! Usage: `{BOT_PREFIX}summary YYYY-MM-DD` or `{BOT_PREFIX}summary \"2024-01-01 12:00:00\"`")
-    else:
-        logger.error(f"An unhandled error in summary occurred: {error}")
 
 @bot.command(name='delete_event')
 async def delete_event(ctx, event_id: str):
@@ -1473,13 +1440,7 @@ async def help_events(ctx):
     
     embed.add_field(
         name="📊 Generate Summary",
-        value=f"`{BOT_PREFIX}summary START_TIMESTAMP [END_TIMESTAMP]`\nGenerates attendance summary with weighted scoring across all events\n\n**Supported timestamp formats:**\n• `YYYY-MM-DD` (date only)\n• `YYYY-MM-DD HH:MM:SS` (full timestamp)\n• `YYYY-MM-DD HH:MM` (date with time)\n• `YYYY/MM/DD` (alternative format)\n• `MM/DD/YYYY` (US format)\n• `1234567890` (epoch seconds)\n\n**Examples:**\n• `{BOT_PREFIX}summary 2024-01-01` (all events after Jan 1)\n• `{BOT_PREFIX}summary 2024-01-01 2024-01-31` (events in January)\n• `{BOT_PREFIX}summary 1704067200` (all events after epoch timestamp)",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="📋 Single Event Summary",
-        value=f"`{BOT_PREFIX}event_summary EVENT_ID_OR_TIMESTAMP`\nGet a detailed summary for a specific event by ID or timestamp\n\n**Usage:**\n• `{BOT_PREFIX}event_summary EVENT_ID` - Get summary for specific event\n• `{BOT_PREFIX}event_summary TIMESTAMP` - Get summary for event closest to timestamp\n\n**Examples:**\n• `{BOT_PREFIX}event_summary 1424971912928563281_1759810178`\n• `{BOT_PREFIX}event_summary 2024-01-15`\n• `{BOT_PREFIX}event_summary 2024-01-15 14:30:00`\n\nWhen using a timestamp, finds the event created closest to that time.",
+        value=f"`{BOT_PREFIX}summary ID1 ID2` - Summary for range of events (inclusive)\n`{BOT_PREFIX}summary EVENT_ID` - Detailed summary for single event\n`{BOT_PREFIX}summary last N` - Summary for the last N events\n`{BOT_PREFIX}summary YYYY-MM-DD` - Summary for a specific date\n\n**Examples:**\n• `{BOT_PREFIX}summary last 5` (Summary of last 5 runs)\n• `{BOT_PREFIX}summary 123_456 123_789` (ID range summary)\n• `{BOT_PREFIX}summary 2024-01-01` (Everything from Jan 1 onwards)\n\nThis command identifies exactly which events are included in the output header for verification.",
         inline=False
     )
     
