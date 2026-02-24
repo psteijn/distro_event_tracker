@@ -18,7 +18,27 @@ A robust Discord bot for tracking gaming events and attendance through custom em
 ### 1. Prerequisites
 - **Python 3.10+**
 - **Git**
-- A Discord Bot Token (via the [Discord Developer Portal](https://discord.com/developers/applications))
+- **A Discord Bot Token**: Follow the steps below to create one.
+
+#### 🔑 How to get a Discord Bot Token
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications).
+2. Click **"New Application"** and give it a name (e.g., "Event Tracker").
+3. On the left sidebar, click **"Bot"**.
+4. Click **"Reset Token"** (or "Copy") to get your unique token. **Keep this secret!**
+5. Scroll down to the **"Privileged Gateway Intents"** section. This is critical:
+   - Enable **"Message Content Intent"** (so the bot can read `!commands`).
+   - Enable **"Server Members Intent"** (so the bot can find users for DMs).
+   - Click **"Save Changes"**.
+6. On the left sidebar, go to **"OAuth2"** -> **"URL Generator"**.
+7. Under **Scopes**, select `bot`.
+8. Under **Bot Permissions**, select:
+   - `Read Messages/View Channels`
+   - `Send Messages`
+   - `Manage Messages` (optional, for deleting events)
+   - `Embed Links`
+   - `Read Message History` (required for recovery)
+   - `Add Reactions`
+9. Copy the generated URL at the bottom and paste it into your browser to invite the bot to your server.
 
 ### 2. Installation
 Clone the repository and enter the directory:
