@@ -10,6 +10,7 @@ import time
 from typing import Dict, List, Optional
 import pytz
 from config import DISCORD_TOKEN, BOT_PREFIX, EVENT_CHANNEL_ID, EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE
+from reminders import handle_event_reminder
 
 # Logging configuration
 log_file = os.getenv('LOG_FILE', 'bot.log')
@@ -245,7 +246,7 @@ class EventTracker:
     def __init__(self):
         self.events = {}
     
-    def create_event(self, event_id: str, name: str, channel_id: int, message_id: int, creator_id: int, created_at: float, multiplier: float = 1.0, type_emoji: str = "") -> Dict:
+    def create_event(self, event_id: str, name: str, channel_id: int, message_id: int, creator_id: int, created_at: float, multiplier: float = 1.0, type_emoji: str = "", is_historical: bool = False) -> Dict:
         """Create a new event with a multiplier for scoring"""
         event = {
             'id': event_id,
@@ -257,7 +258,8 @@ class EventTracker:
             'created_at': created_at,
             'multiplier': multiplier,
             'attendance': {},
-            'manual_attendance': []
+            'manual_attendance': [],
+            'is_historical': is_historical
         }
         self.events[event_id] = event
         return event
@@ -319,6 +321,22 @@ class EventTracker:
         """Get the most recent N events"""
         all_events = sorted(self.events.values(), key=lambda x: x['created_at'], reverse=True)
         return sorted(all_events[:n], key=lambda x: x['created_at'])
+    
+    def get_most_recent_before(self, event_id: str) -> Optional[Dict]:
+        """Find the most recent event created before the given event ID"""
+        if event_id not in self.events:
+            return None
+            
+        target_event = self.events[event_id]
+        target_time = target_event['created_at']
+        
+        # Filter for events before the target and sort by time descending
+        events_before = [e for e in self.events.values() if e['created_at'] < target_time]
+        if not events_before:
+            return None
+            
+        sorted_before = sorted(events_before, key=lambda x: x['created_at'], reverse=True)
+        return sorted_before[0]
     
     def generate_summary(self, events: List[Dict]) -> Dict:
         """Generate attendance summary for events"""
@@ -434,7 +452,7 @@ class EventTracker:
                 
                 event_messages_found += 1
                 
-                if await self._process_message_for_events(message):
+                if await self._process_message_for_events(message, is_historical=True):
                     reconstructed_count += 1
         else:
             logger.error(f"❌ Channel {EVENT_CHANNEL_ID} not found")
@@ -444,7 +462,7 @@ class EventTracker:
         logger.info(f"✅ Reconstructed {reconstructed_count} events from {event_messages_found} event messages (scanned {total_messages_scanned} total messages) in {duration:.2f} seconds")
         return reconstructed_count
     
-    async def _process_message_for_events(self, message):
+    async def _process_message_for_events(self, message, is_historical: bool = False):
         """Process a single message to check if it's an event message"""
         # Check if message has embeds (event messages use embeds)
         if not message.embeds:
@@ -559,7 +577,8 @@ class EventTracker:
             'created_at': created_at_timestamp,
             'multiplier': embed_multiplier,
             'attendance': {},
-            'manual_attendance': manual_attendance_users
+            'manual_attendance': manual_attendance_users,
+            'is_historical': is_historical
         }
         
         # Process reactions to get attendance
@@ -792,11 +811,11 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     event['message_id'] = event_message.id
     event_tracker.events[event_id]['message_id'] = event_message.id
 
-    # Add the four "default" reaction emojis that allow people to record their attendance.
-    await event_message.add_reaction(hundred_emoji)
-    await event_message.add_reaction(seventy_five_emoji)
-    await event_message.add_reaction(fifty_emoji)
     await event_message.add_reaction(twenty_five_emoji)
+    
+    # Trigger asynchronous reminder task (only for live events)
+    if not event.get('is_historical', False):
+        asyncio.create_task(handle_event_reminder(bot, event_tracker, event, PACIFIC_TZ))
 
 @bot.command(name='dungeon')
 async def dungeon(ctx, *, dungeon_name: str):
