@@ -117,6 +117,11 @@ async def test_reminder_identifies_missing_users_and_includes_creator(mock_bot, 
         # Verify DM sent to both Alice (creator) and Bob
         assert mock_user_10.send.call_count == 1
         assert mock_user_20.send.call_count == 1
+        
+        # Verify mention is in the description
+        args, kwargs = mock_user_10.send.call_args
+        embed = kwargs.get('embed')
+        assert "<@10>" in embed.description
 
 @pytest.mark.asyncio
 async def test_reminder_skipped_if_historical(mock_bot, tracker):

@@ -111,10 +111,9 @@ async def handle_event_reminder(bot, event_tracker, new_event, PACIFIC_TZ):
         icon = new_event.get('type_emoji', '')
         event_name = new_event['name']
         
-        # Fetch creator for the DM context
+        # Use a mention for the creator to provide a rich link
         creator_id = new_event['creator_id']
-        creator = bot.get_user(creator_id)
-        creator_name = creator.name if creator else "a teammate"
+        creator_mention = f"<@{creator_id}>"
 
         # 8. Send DMs with throttling
         for user_id in missing_ids:
@@ -131,7 +130,7 @@ async def handle_event_reminder(bot, event_tracker, new_event, PACIFIC_TZ):
             try:
                 embed = discord.Embed(
                     title=f"🛡️ {icon} {event_name}",
-                    description=f"**{creator_name}** started a new event and you haven't reacted yet!",
+                    description=f"{creator_mention} started a new event and you haven't reacted yet!",
                     color=discord.Color.blue()
                 )
                 embed.add_field(
