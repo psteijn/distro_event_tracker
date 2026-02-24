@@ -4,7 +4,7 @@ from config import EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY
 
 def setup_event_with_tracker():
     tracker = EventTracker()
-    tracker.create_event("evt1", "Test Event", channel_id=1, message_id=2, creator_id=3, created_at=100.0, multiplier=1.0)
+    tracker.create_event("evt1", "Test Event", channel_id=1, message_id=2, creator_id=3, created_at=100.0, multiplier=1.0, type_emoji="🏰")
     return tracker
 
 
@@ -13,6 +13,7 @@ def test_create_event_initializes_fields():
     event = tracker.create_event(
         event_id="evt1",
         name="Test Event",
+        type_emoji="🏰",
         channel_id=123,
         message_id=456,
         creator_id=789,
@@ -21,6 +22,7 @@ def test_create_event_initializes_fields():
     )
     assert "evt1" in tracker.events
     assert event["name"] == "Test Event"
+    assert event["type_emoji"] == "🏰"
     assert event["multiplier"] == 2.0
     assert event["attendance"] == {}
     assert event["manual_attendance"] == []
@@ -54,9 +56,9 @@ def test_remove_attendance_removes_emoji_and_user():
 
 def test_get_events_in_range_filters_by_created_at():
     tracker = EventTracker()
-    e1 = tracker.create_event("evt1", "Old", 1, 2, 3, 10.0)
-    e2 = tracker.create_event("evt2", "Mid", 1, 2, 3, 20.0)
-    e3 = tracker.create_event("evt3", "New", 1, 2, 3, 30.0)
+    e1 = tracker.create_event("evt1", "Old", 1, 2, 3, 10.0, type_emoji="🏰")
+    e2 = tracker.create_event("evt2", "Mid", 1, 2, 3, 20.0, type_emoji="🏰")
+    e3 = tracker.create_event("evt3", "New", 1, 2, 3, 30.0, type_emoji="🏰")
 
     events = tracker.get_events_in_range(15, 30)
     ids = {e["id"] for e in events}
@@ -65,7 +67,7 @@ def test_get_events_in_range_filters_by_created_at():
 
 def test_generate_summary_merges_manual_attendance(monkeypatch):
     tracker = EventTracker()
-    e = tracker.create_event("evt1", "Test", 1, 2, 3, 100.0)
+    e = tracker.create_event("evt1", "Test", 1, 2, 3, 100.0, type_emoji="🏰")
     e["attendance"] = {123: ("Alice", ["X"])}
     e["manual_attendance"] = [{"name": "Bob", "multiplier": 0.75}]
 

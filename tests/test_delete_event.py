@@ -19,6 +19,7 @@ async def test_delete_event_happy_case(monkeypatch):
     event_tracker.events["evt1"] = {
         "id": "evt1",
         "name": "Delete Me",
+        "type_emoji": "🏰",
         "channel_id": 123,
         "message_id": 456,
         "creator_id": creator_id,
