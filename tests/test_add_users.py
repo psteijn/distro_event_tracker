@@ -15,6 +15,7 @@ async def test_add_users_happy_case(monkeypatch):
     event_tracker.events["evt1"] = {
         "id": "evt1",
         "name": "Test Event",
+        "type_emoji": "🏰",
         "channel_id": 123,
         "message_id": 456,
         "creator_id": 1,
@@ -78,6 +79,7 @@ async def test_add_users_invalid_multiplier(monkeypatch):
     event_tracker.events["evt1"] = {
         "id": "evt1",
         "name": "Test Event",
+        "type_emoji": "🏰",
         "channel_id": 123,
         "message_id": 456,
         "creator_id": 1,
@@ -138,6 +140,7 @@ async def test_add_users_no_members(monkeypatch):
     event_tracker.events["evt1"] = {
         "id": "evt1",
         "name": "Test Event",
+        "type_emoji": "🏰",
         "channel_id": 123,
         "message_id": 456,
         "creator_id": 1,
@@ -175,6 +178,7 @@ async def test_add_users_overwrites_existing_manual_and_updates_embed(monkeypatc
     event_tracker.events["evt1"] = {
         "id": "evt1",
         "name": "Test Event",
+        "type_emoji": "🏰",
         "channel_id": 123,
         "message_id": 456,
         "creator_id": 1,

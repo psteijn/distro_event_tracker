@@ -16,6 +16,7 @@ async def test_missing_happy_case_no_args():
     event_tracker.events["evt_old"] = {
         "id": "evt_old",
         "name": "Old Run",
+        "type_emoji": "🏰",
         "channel_id": 1,
         "message_id": 10,
         "creator_id": 1,
@@ -34,6 +35,7 @@ async def test_missing_happy_case_no_args():
     event_tracker.events["evt_new"] = {
         "id": "evt_new",
         "name": "New Run",
+        "type_emoji": "🏰",
         "channel_id": 1,
         "message_id": 11,
         "creator_id": 1,

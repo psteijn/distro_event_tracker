@@ -7,11 +7,11 @@ def populated_tracker():
     """Returns a tracker with 5 events spread over time."""
     tracker = EventTracker()
     # Event IDs with timestamps (ID format: messageid_timestamp)
-    tracker.create_event("100_1000", "Event 1", 1, 100, 1, 1000.0)
-    tracker.create_event("200_2000", "Event 2", 1, 200, 1, 2000.0)
-    tracker.create_event("300_3000", "Event 3", 1, 300, 1, 3000.0)
-    tracker.create_event("400_4000", "Event 4", 1, 400, 1, 4000.0)
-    tracker.create_event("500_5000", "Event 5", 1, 500, 1, 5000.0)
+    tracker.create_event("100_1000", "Event 1", 1, 100, 1, 1000.0, type_emoji="🏰")
+    tracker.create_event("200_2000", "Event 2", 1, 200, 1, 2000.0, type_emoji="⚔️")
+    tracker.create_event("300_3000", "Event 3", 1, 300, 1, 3000.0, type_emoji="🗺️")
+    tracker.create_event("400_4000", "Event 4", 1, 400, 1, 4000.0, type_emoji="👹")
+    tracker.create_event("500_5000", "Event 5", 1, 500, 1, 5000.0, type_emoji="👑")
     return tracker
 
 def test_get_events_between_ids_happy_path(populated_tracker):
@@ -55,8 +55,8 @@ def test_chronological_sorting_stability():
     """Verify that events with identical timestamps are still sorted correctly (by list insertion or ID)."""
     tracker = EventTracker()
     # Same timestamp, different IDs
-    tracker.create_event("id_b", "Second", 1, 10, 1, 1000.0)
-    tracker.create_event("id_a", "First", 1, 5, 1, 1000.0)
+    tracker.create_event("id_b", "Second", 1, 10, 1, 1000.0, type_emoji="🏰")
+    tracker.create_event("id_a", "First", 1, 5, 1, 1000.0, type_emoji="🏰")
     
     # We want to ensure that if timestamps are identical, we don't crash and maintain some order.
     # Current implementation uses 'created_at' for sorting.

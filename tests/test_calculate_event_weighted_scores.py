@@ -7,6 +7,7 @@ def make_base_event():
     return {
         "id": "event1",
         "name": "Test Event",
+        "type_emoji": "🏰",
         "channel_id": 123,
         "message_id": 456,
         "creator_id": 789,

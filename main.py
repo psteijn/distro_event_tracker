@@ -245,11 +245,12 @@ class EventTracker:
     def __init__(self):
         self.events = {}
     
-    def create_event(self, event_id: str, name: str, channel_id: int, message_id: int, creator_id: int, created_at: float, multiplier: float = 1.0) -> Dict:
+    def create_event(self, event_id: str, name: str, channel_id: int, message_id: int, creator_id: int, created_at: float, multiplier: float = 1.0, type_emoji: str = "") -> Dict:
         """Create a new event with a multiplier for scoring"""
         event = {
             'id': event_id,
             'name': name,
+            'type_emoji': type_emoji,
             'channel_id': channel_id,
             'message_id': message_id,
             'creator_id': creator_id,
@@ -347,6 +348,7 @@ class EventTracker:
             event_summary = {
                 'id': event['id'],
                 'name': event['name'],
+                'type_emoji': event.get('type_emoji', ''),
                 'multiplier': event['multiplier'],
                 'created_at': event['created_at'],
                 'total_attendees': len(attendance_by_user),
@@ -457,25 +459,31 @@ class EventTracker:
         # Detect event type and extract name
         event_name = None
         multiplier = 1.0
+        type_emoji = ""
         
         if embed.title.startswith("🏰 "):
             # Dungeon event
+            type_emoji = "🏰"
             event_name = embed.title.replace("🏰 ", "")
             multiplier = 1.0
         elif embed.title.startswith("⚔️ "):
             # Miniboss event
+            type_emoji = "⚔️"
             event_name = embed.title.replace("⚔️ ", "")
             multiplier = 1.0
         elif embed.title.startswith("🗺️ "):
             # T8 maps event
+            type_emoji = "🗺️"
             event_name = embed.title.replace("🗺️ ", "")
             multiplier = 1.0
         elif embed.title.startswith("👹 "):
             # Boss event
+            type_emoji = "👹"
             event_name = embed.title.replace("👹 ", "")
             multiplier = 2.0
         elif embed.title.startswith("👑 "):
             # Omniboss event
+            type_emoji = "👑"
             event_name = embed.title.replace("👑 ", "")
             multiplier = 8.0
         else:
@@ -544,6 +552,7 @@ class EventTracker:
         event = {
             'id': event_id,
             'name': event_name,
+            'type_emoji': type_emoji,
             'channel_id': message.channel.id,
             'message_id': message.id,
             'creator_id': creator_id,
@@ -754,6 +763,7 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     event = event_tracker.create_event(
         event_id=event_id,
         name=event_name,
+        type_emoji=emoji,
         channel_id=ctx.channel.id,
         message_id=ctx.message.id,
         creator_id=ctx.author.id,
@@ -1045,10 +1055,18 @@ async def summary(ctx, *, args: str = ""):
             for user_id, (user_name, emojis) in event['attendance_by_user'].items():
                 attendees_list.append(f"{user_name}")
             
+            # Format time for this event
+            dt = datetime.fromtimestamp(event['created_at'], tz=PACIFIC_TZ)
+            time_str = dt.strftime('%m-%d %H:%M')
+            icon = event.get('type_emoji', '')
+            
+            prefix = f"{icon} " if icon else ""
+            line_header = f"{prefix}{event['name']} ({time_str})"
+
             if attendees_list:
-                text_output += f"{event['name']}: {', '.join(attendees_list)}\n"
+                text_output += f"{line_header}: {', '.join(attendees_list)}\n"
             else:
-                text_output += f"{event['name']}: (no attendees)\n"
+                text_output += f"{line_header}: (no attendees)\n"
         
         # Add event names line for easy auditing
         event_names = [event['name'] for event in summary_data['events']]
