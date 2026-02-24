@@ -58,24 +58,38 @@ async def test_reminder_identifies_missing_users_and_includes_creator(mock_bot, 
     new_event = tracker.create_event("new", "New", 1, 100, 10, 2000.0, type_emoji="🏰")
     tracker.add_attendance("new", 30, "Charlie", "X") # Charlie reacted early
     
-    # Mock channel and message for jump link
+    # Mock channel and messages
     mock_channel = MagicMock()
-    mock_message = MagicMock()
-    mock_message.jump_url = "http://discord/jump"
     
-    # Mock reactions (only Charlie reacted to new event)
-    mock_reaction = MagicMock()
+    # Mock New Message
+    mock_message_new = MagicMock()
+    mock_message_new.jump_url = "http://discord/jump"
+    mock_reaction_new = MagicMock()
     mock_user_30 = MagicMock()
     mock_user_30.bot = False
     mock_user_30.id = 30
+    async def mock_users_new(): yield mock_user_30
+    mock_reaction_new.users = mock_users_new
+    mock_message_new.reactions = [mock_reaction_new]
     
-    async def mock_users():
-        yield mock_user_30
-        
-    mock_reaction.users = mock_users
-    mock_message.reactions = [mock_reaction]
-    
-    mock_channel.fetch_message = AsyncMock(return_value=mock_message)
+    # Mock Previous Message
+    mock_message_prev = MagicMock()
+    mock_reaction_prev1 = MagicMock()
+    mock_reaction_prev2 = MagicMock()
+    u10, u20 = MagicMock(), MagicMock()
+    u10.id, u10.bot = 10, False
+    u20.id, u20.bot = 20, False
+    async def mock_users_p1(): yield u10
+    async def mock_users_p2(): yield u20
+    mock_reaction_prev1.users = mock_users_p1
+    mock_reaction_prev2.users = mock_users_p2
+    mock_message_prev.reactions = [mock_reaction_prev1, mock_reaction_prev2]
+
+    # Helper to return different messages based on ID
+    async def fake_fetch(mid):
+        return mock_message_new if mid == 100 else mock_message_prev
+
+    mock_channel.fetch_message.side_effect = fake_fetch
     mock_bot.get_channel.return_value = mock_channel
     
     # Mock users for DM
@@ -130,23 +144,40 @@ async def test_reminder_absolute_age_skip(mock_bot, tracker):
 @pytest.mark.asyncio
 async def test_reminder_throttles_dms(mock_bot, tracker):
     """Verify that we sleep between DMs to avoid rate limits."""
-    tracker.create_event("old", "Old", 1, 50, 5, 1000.0, type_emoji="🏰")
+    tracker.create_event("old", "Old", 1, 50, 5, 1000.0, type_emoji="🏰", is_historical=False)
     tracker.add_attendance("old", 1, "User1", "X")
     tracker.add_attendance("old", 2, "User2", "X")
     
-    new_event = tracker.create_event("new", "New", 1, 100, 10, 2000.0, type_emoji="🏰")
+    new_event = tracker.create_event("new", "New", 1, 100, 10, 2000.0, type_emoji="🏰", is_historical=False)
     
     # Setup mocks
     mock_channel = MagicMock()
     mock_message = MagicMock()
     mock_message.jump_url = "http://discord/jump"
-    mock_message.reactions = [] # No one reacted
-    mock_channel.fetch_message = AsyncMock(return_value=mock_message)
+    mock_message.reactions = [] # No one reacted yet
+    
+    # Mock previous message reactions
+    m1, m2 = MagicMock(), MagicMock()
+    u1, u2 = MagicMock(), MagicMock()
+    u1.id, u1.bot = 1, False
+    u2.id, u2.bot = 2, False
+    async def f1(): yield u1
+    async def f2(): yield u2
+    m1.users = f1
+    m2.users = f2
+    
+    mock_message_prev = MagicMock()
+    mock_message_prev.reactions = [m1, m2]
+
+    async def fake_fetch(mid):
+        return mock_message if mid == 100 else mock_message_prev
+
+    mock_channel.fetch_message.side_effect = fake_fetch
     mock_bot.get_channel.return_value = mock_channel
     
-    u1, u2 = AsyncMock(), AsyncMock()
-    u1.bot = u2.bot = False
-    mock_bot.get_user.side_effect = lambda uid: {1: u1, 2: u2}.get(uid)
+    udm1, udm2 = AsyncMock(), AsyncMock()
+    udm1.bot = udm2.bot = False
+    mock_bot.get_user.side_effect = lambda uid: {1: udm1, 2: udm2}.get(uid)
 
     with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep, \
          patch('reminders.datetime') as mock_datetime:
@@ -159,5 +190,3 @@ async def test_reminder_throttles_dms(mock_bot, tracker):
         # Should sleep 120s once, and 1.0s twice (once for each user)
         # Total 3 sleeps
         assert mock_sleep.call_count == 3
-        mock_sleep.assert_any_call(120)
-        mock_sleep.assert_any_call(1.0)

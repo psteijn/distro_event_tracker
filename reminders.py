@@ -74,17 +74,31 @@ async def handle_event_reminder(bot, event_tracker, new_event, PACIFIC_TZ):
             logger.error(f"Could not fetch message {new_event['message_id']} for reminders: {e}")
             return
 
-        # 5. Identify current attendees from ACTUAL reactions on the message
+        # 5. Identify current attendees from ACTUAL reactions on the NEW message
         new_attendees = set()
         for reaction in message.reactions:
             async for user in reaction.users():
                 if not user.bot:
                     new_attendees.add(user.id)
 
-        # 6. Identify those who haven't reacted yet
-        # Get users from previous event (only reactions)
-        prev_attendees = set(prev_event['attendance'].keys())
-        
+        # 6. Re-fetch reactions for the PREVIOUS message to ensure we have late joiners
+        prev_attendees = set()
+        prev_channel = bot.get_channel(prev_event['channel_id'])
+        if prev_channel:
+            try:
+                prev_message = await prev_channel.fetch_message(prev_event['message_id'])
+                for reaction in prev_message.reactions:
+                    async for user in reaction.users():
+                        if not user.bot:
+                            prev_attendees.add(user.id)
+            except Exception as e:
+                logger.warning(f"Could not re-fetch previous message {prev_event['message_id']}: {e}. Falling back to memory.")
+                # Fallback to in-memory attendance if message is gone/error
+                prev_attendees = set(prev_event['attendance'].keys())
+        else:
+            prev_attendees = set(prev_event['attendance'].keys())
+
+        # 7. Identify those who haven't reacted yet
         # Identify the delta
         missing_ids = prev_attendees - new_attendees
         
@@ -102,7 +116,7 @@ async def handle_event_reminder(bot, event_tracker, new_event, PACIFIC_TZ):
         creator = bot.get_user(creator_id)
         creator_name = creator.name if creator else "a teammate"
 
-        # 7. Send DMs with throttling
+        # 8. Send DMs with throttling
         for user_id in missing_ids:
             user = bot.get_user(user_id)
             if not user:
