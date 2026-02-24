@@ -1,229 +1,118 @@
 # Discord Event Tracker Bot
 
-A Discord bot for tracking gaming events and attendance through custom emoji reactions. Users can create different types of events (dungeons, minibosses, bosses) with weighted scoring, register attendance by reacting with custom emojis, and generate comprehensive attendance summaries with weighted averages.
+A robust Discord bot for tracking gaming events and attendance through custom emoji reactions. Designed for high-volume guilds, it features weighted scoring, deterministic ID-based tracking, and smart participation reminders.
 
-## Features
+## 🚀 Key Features
 
-- **Three Event Types**: Create dungeon (1x), miniboss (1x), and boss (2x) events with different multipliers
-- **Custom Emoji Reactions**: Users register attendance levels using custom emoji reactions (100%, 75%, 50%, 25%)
-- **Weighted Scoring System**: Events have multipliers that affect final attendance scores
-- **Manual Attendance**: Add users manually to events with the `add_users` command
-- **Flexible Timestamps**: Support for multiple timestamp formats including full timestamps and epoch seconds
-- **Smart Summaries**: Generate attendance summaries with optional end timestamps
-- **Weighted Averages**: Shows most active attendees across all events with attendance scores
-- **Display Names**: Shows user display names in summaries for better readability
-- **Simple Text Output**: Clean, readable text format instead of complex JSON
-- **Account Name Tracking**: Internally tracks account names for accurate user identification
-- **Automatic Recovery**: Rebuilds events from message history on restart (no database required)
-- **Pacific Timezone**: All timestamps handled in Pacific timezone with automatic daylight savings
-- **Quoted Timestamps**: Supports quoted timestamps for complex date/time strings
-- **Parallel Processing**: Fast startup with optimized channel scanning
+- **Intelligent Event Summaries**: Get detailed attendance reports for a single run, a specific range of runs, or just your most recent activity using one simple command.
+- **Automatic Participation Reminders**: Helps keep your group together by sending a polite DM to players who attended the last run but haven't signed up for the new one yet.
+- **Weighted Scoring System**: Different event types (like Bosses vs. Dungeons) give different point values, ensuring players are fairly rewarded for more difficult content.
+- **Instant Setup & Recovery**: The bot builds its memory directly from your channel history. No database is required, and the bot "remembers" everything instantly after a restart.
+- **Accurate Time Tracking**: Uses Discord's server time as the source of truth, so your summaries and timestamps are always perfectly synced with the chat.
+- **Multi-Group Support**: Easily run separate bot instances for different teams or guilds from a single installation.
 
-## Setup
+---
 
-1. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+## 🛠️ Deployment & Setup
 
-2. **Create a `.env` file with your Discord bot token:**
-   ```
-   DISCORD_TOKEN=your_bot_token_here
-   EVENT_CHANNEL_ID=your_channel_id_here
-   ```
-   
-   **Note:** The bot prefix and emoji names are configured in `config.py` and can be customized there.
+### 1. Prerequisites
+- **Python 3.10+**
+- **Git**
+- **A Discord Bot Token**: Follow the steps below to create one.
 
-3. **Run the bot:**
-   
-   **Windows (Command Prompt/PowerShell):**
-   ```cmd
-   start_bot.bat
-   ```
-   
-   **Windows (Git Bash/WSL):**
-   ```bash
-   ./start_bot.sh
-   ```
-   
-   **Manual start:**
-   ```bash
-   python main.py
-   ```
+#### 🔑 How to get a Discord Bot Token
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications).
+2. Click **"New Application"** and give it a name (e.g., "Event Tracker").
+3. On the left sidebar, click **"Bot"**.
+4. Click **"Reset Token"** (or "Copy") to get your unique token. **Keep this secret!**
+5. Scroll down to the **"Privileged Gateway Intents"** section. This is critical:
+   - Enable **"Message Content Intent"** (so the bot can read `!commands`).
+   - Enable **"Server Members Intent"** (so the bot can find users for DMs).
+   - Click **"Save Changes"**.
+6. On the left sidebar, go to **"OAuth2"** -> **"URL Generator"**.
+7. Under **Scopes**, select `bot`.
+8. Under **Bot Permissions**, select:
+   - `Read Messages/View Channels`
+   - `Send Messages`
+   - `Manage Messages` (optional, for deleting events)
+   - `Embed Links`
+   - `Read Message History` (required for recovery)
+   - `Add Reactions`
+9. Copy the generated URL at the bottom and paste it into your browser to invite the bot to your server.
 
-## Commands
-
-### Event Creation Commands
-
-#### `!dungeon Dungeon Name`
-Creates a new dungeon event with 1x multiplier.
-
-**Example:**
-```
-!dungeon Ancient Ruins
-!dungeon Crystal Caverns
+### 2. Installation
+Clone the repository and enter the directory:
+```bash
+git clone https://github.com/psteijn/distro_event_tracker.git
+cd distro_event_tracker
 ```
 
-#### `!miniboss Miniboss Name`
-Creates a new miniboss event with 1x multiplier.
+### 3. Configuration
+The bot uses `.env` files for configuration. 
+1. Copy `env_example.txt` to `.env`.
+2. Fill in your `DISCORD_TOKEN` and `EVENT_CHANNEL_ID`.
 
-**Example:**
-```
-!miniboss Shadow Dragon
-!miniboss Ice Golem
-```
+**Customizing Multipliers & Emojis:**
+Edit `config.py` to change scoring weights or custom emoji names (e.g., `share_100`, `share_75`).
 
-#### `!boss Boss Name`
-Creates a new boss event with 2x multiplier (double points).
+### 4. Running the Bot
+The bot includes convenience scripts for different environments:
 
-**Example:**
-```
-!boss Demon Lord
-!boss Final Boss
-```
+#### **Standard Startup (using .env):**
+- **Windows:** `start_bot.bat`
+- **Linux/Shell:** `./start_bot.sh`
 
-### `!add_users EVENT_ID @user1 @user2 @user3`
-Manually add users to an existing event. Users added this way get full attendance (100%) with a 🐈 emoji.
+#### **Multi-Instance Startup:**
+If you want to run two different bots (e.g., for different guilds or purposes):
+1. Create `.env.distro` and `.env.ocean`.
+2. Run `start_distro.bat` or `start_ocean.bat`.
+*These scripts automatically load their respective environment files and log to separate files.*
 
-**Example:**
-```
-!add_users 1234567890_1234567890 @alice @bob @charlie
-```
+---
 
-### `!summary START_TIMESTAMP [END_TIMESTAMP]`
-Generates attendance summary for events in a time range. The end timestamp is optional - if omitted, shows all events after the start timestamp.
+## 🎮 Command Guide
 
-**Supported timestamp formats:**
-- `YYYY-MM-DD` (date only)
-- `YYYY-MM-DD HH:MM:SS` (full timestamp)
-- `YYYY-MM-DD HH:MM` (date with time)
-- `YYYY/MM/DD` (alternative format)
-- `MM/DD/YYYY` (US format)
-- `1234567890` (epoch seconds)
+### Event Creation
+| Command | Multiplier | Icon | Description |
+| :--- | :--- | :--- | :--- |
+| `!dungeon <name>` | 1.0x | 🏰 | Standard dungeon run. |
+| `!miniboss <name>` | 1.0x | ⚔️ | Miniboss encounter. |
+| `!t8 <name>` | 1.0x | 🗺️ | Tier 8 map group. |
+| `!boss <name>` | 2.0x | 👹 | Main boss event (Double Points). |
+| `!omniboss <name>` | 8.0x | 👑 | Massive guild event (8x Points). |
 
-**Examples:**
-```
-!summary 2024-01-01                           # All events after Jan 1
-!summary "2024-01-01"                         # Same as above (quoted)
-!summary 2024-01-01 2024-01-31               # Events in January
-!summary "2024-01-01" "2024-01-31"           # Same as above (quoted)
-!summary 2024-01-15 14:30:00                 # All events after 2:30 PM on Jan 15
-!summary "2024-01-15 14:30:00"               # Same as above (quoted)
-!summary 2024-01-01 09:00:00 2024-01-01 18:00:00  # Events on Jan 1, 9am-6pm
-!summary "2024-01-01 09:00:00" "2024-01-01 18:00:00"  # Same as above (quoted)
-!summary 1704067200                          # All events after epoch timestamp
-```
+### The Unified `!summary` Command
+The new summary command is context-aware and accepts multiple formats:
 
-### `!help_events`
-Shows detailed help information about all available commands and timestamp formats.
+- **`!summary last 5`**: Summarizes the 5 most recent events.
+- **`!summary <id1> <id2>`**: Summarizes everything between two Event IDs (inclusive).
+- **`!summary <event_id>`**: Provides a detailed summary for a single specific event.
+- **`!summary 2024-01-15`**: (Fallback) Summarizes events starting from a specific date.
 
-## Usage
+### Administrative Tools
+- **`!add_users <id> <multiplier> @user...`**: Manually add attendees with a specific weight (1.0, 0.75, 0.5, 0.25).
+- **`!rename <id> <new_name>`**: Updates the event name in memory and on the original Discord message.
+- **`!delete_event <id>`**: Removes the event and its Discord message (Creator only).
+- **`!missing`**: Compares the last two events and lists users who missed the most recent one.
 
-1. **Create Events**: Use `!dungeon`, `!miniboss`, or `!boss` commands to create different types of events
-2. **Register Attendance**: React to event messages with custom emojis to register your attendance level
-3. **Add Users Manually**: Use `!add_users` to manually add users to events
-4. **Generate Summaries**: Use `!summary` with timestamps to get attendance reports with weighted scoring
+---
 
-## Attendance System
+## 🧠 Smart Reminders Logic
+To maintain momentum during "Distros," the bot helps remind active players to react:
+1. When Event B starts, the bot checks if Event A happened within the last **2 hours**.
+2. If yes, it waits **120 seconds**.
+3. It then re-fetches the reactions for **both events**.
+4. Anyone who reacted to Event A but is "missing" from Event B gets a polite DM with a **jump-link** to the new event.
 
-### Custom Emoji Reactions
-The bot uses custom emoji reactions for attendance tracking:
+---
 
-- **`share_100`** - 100% attendance (1.0x participation multiplier)
-- **`share_75`** - 75% attendance (0.75x participation multiplier)  
-- **`share_50`** - 50% attendance (0.5x participation multiplier)
-- **`share_25`** - 25% attendance (0.25x participation multiplier)
+## 🧪 Development & Testing
+To run the automated test suite (42+ tests covering range logic, scoring, and reminders):
+- **Windows:** `run_tests.bat`
+- **Linux/Shell:** `./run_tests.sh`
 
-### Event Multipliers
-Different event types have different multipliers that affect final scoring:
+---
 
-- **Dungeon Events** (`!dungeon`) - 1x multiplier
-- **Miniboss Events** (`!miniboss`) - 1x multiplier  
-- **Boss Events** (`!boss`) - 2x multiplier (double points)
-
-### Scoring Formula
-**Final Score = Event Multiplier × Participation Multiplier**
-
-- A user who attends a boss event with 100% participation gets: 2.0 × 1.0 = 2.0 points
-- A user who attends a dungeon event with 75% participation gets: 1.0 × 0.75 = 0.75 points
-- Manual attendance (via `!add_users`) always gets 1.0x participation multiplier
-
-## Output Format
-
-The summary command outputs clean, readable text with weighted averages:
-
-```
-📊 Event Attendance Summary
-Events from 2024-01-01 to 2024-01-31 (Pacific Time)
-Total Events: 5
-
-🏰 Ancient Ruins: John, Jane, Bob
-⚔️ Shadow Dragon: Alice, Charlie, John
-👹 Demon Lord: Bob, Jane
-🏰 Crystal Caverns: Alice, John, Charlie
-⚔️ Ice Golem: Jane, Bob, Alice
-
--------
-Events: Ancient Ruins, Shadow Dragon, Demon Lord, Crystal Caverns, Ice Golem
-ALL EVENTS: John (3.0), Jane (3.0), Bob (3.0), Alice (2.0), Charlie (1.0)
-```
-
-**Key Features:**
-- **Event List**: Shows each event with attendees (includes event type emojis)
-- **Event Names**: Lists all event names in the summary
-- **Weighted Summary**: "ALL EVENTS" line shows most active attendees with weighted scores
-- **Pacific Timezone**: All timestamps displayed in Pacific timezone
-- **Clean Format**: Easy to read and parse
-- **Scoring**: Scores reflect both event multipliers and participation levels
-
-## Configuration
-
-Edit `config.py` to customize:
-- Bot command prefix (default: `!`)
-- Designated event channel (optional)
-- Custom emoji names for attendance reactions:
-  - `EMOJI_HUNDRED` (default: `share_100`)
-  - `EMOJI_SEVENTY_FIVE` (default: `share_75`)
-  - `EMOJI_FIFTY` (default: `share_50`)
-  - `EMOJI_TWENTY_FIVE` (default: `share_25`)
-- Database path (for future SQLite implementation)
-
-## Technical Details
-
-- **User Tracking**: Internally tracks account names for accurate identification
-- **Display Names**: Shows user display names in summaries for better readability
-- **In-Memory Storage**: Events are stored in memory with automatic recovery from message history
-- **Event Reconstruction**: Automatically rebuilds events from Discord message history on startup
-- **Custom Emoji Support**: Uses custom Discord emojis for attendance tracking
-- **Weighted Scoring System**: Calculates scores using event multipliers and participation levels
-- **Manual Attendance**: Supports adding users manually with full attendance credit
-- **Flexible Parsing**: Supports multiple timestamp formats with intelligent parsing
-- **Message Splitting**: Automatically handles long outputs by splitting into multiple messages
-- **Timezone Handling**: All timestamps in Pacific timezone with automatic daylight savings
-- **Quote Support**: Handles quoted timestamps for complex date/time strings
-- **Parallel Processing**: Fast startup with optimized channel scanning
-- **Permission Handling**: Gracefully handles channels without read permissions
-- **Reaction Processing**: Efficiently processes emoji reactions for attendance tracking
-- **Error Recovery**: Continues operation even if some channels fail to load
-- **Event Types**: Supports three distinct event types with different scoring multipliers
-
-## Startup Process
-
-When the bot starts up, it automatically:
-
-1. **Connects to Discord** and shows guild count
-2. **Scans message history** from the designated event channel
-3. **Reconstructs events** and attendance data from embeds and reactions
-4. **Processes custom emojis** and attendance levels
-5. **Reports results** showing how many events were reconstructed
-6. **Ready for use** with full historical data restored
-
-**Console Output Example:**
-```
-🔄 Reconstructing events from message history...
-📖 Scanning channel: events in My Server
-📝 Reconstructed event: Ancient Ruins (ID: 1234567890_1704067200, multiplier: 1.0x, attendance: ['John', 'Jane'])
-📝 Reconstructed event: Demon Lord (ID: 1234567891_1704153600, multiplier: 2.0x, attendance: ['Bob', 'Alice'])
-✅ Reconstructed 2 events from message history
-🚀 Bot ready! Reconstructed 2 events from history.
-```
+## 🔒 Security Note
+- Never commit your `.env` files.
+- The project includes a `.gitignore` that automatically excludes `.env*` and all `*.log` files to protect your tokens and local data.
