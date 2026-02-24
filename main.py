@@ -5,9 +5,24 @@ import sys
 from datetime import datetime, timedelta
 import json
 import os
+import logging
+import time
 from typing import Dict, List, Optional
 import pytz
 from config import DISCORD_TOKEN, BOT_PREFIX, EVENT_CHANNEL_ID, EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE
+
+# Logging configuration
+log_file = os.getenv('LOG_FILE', 'bot.log')
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(levelname)-8s] %(name)s (%(filename)s:%(lineno)d): %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.FileHandler(log_file, encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger('bot')
 
 # Ensure stdout supports UTF-8 for printing emojis to console
 if hasattr(sys.stdout, 'reconfigure'):
@@ -365,14 +380,15 @@ class EventTracker:
     
     async def reconstruct_from_history(self, bot):
         """Reconstruct events from message history with optimizations"""
-        print("🔄 Reconstructing events from message history...")
+        logger.info("🔄 Reconstructing events from message history...")
+        start_time = asyncio.get_event_loop().time()
         reconstructed_count = 0
         total_messages_scanned = 0
         event_messages_found = 0
         
         channel = bot.get_channel(int(EVENT_CHANNEL_ID))
         if channel:
-            print(f"📖 Scanning channel: {channel.name}")
+            logger.info(f"📖 Scanning channel: {channel.name}")
             
             # Optimization #1: Early filtering - only process bot messages with embeds
             async for message in channel.history(limit=1000):
@@ -391,9 +407,11 @@ class EventTracker:
                 if await self._process_message_for_events(message):
                     reconstructed_count += 1
         else:
-            print(f"❌ Channel {EVENT_CHANNEL_ID} not found")
+            logger.error(f"❌ Channel {EVENT_CHANNEL_ID} not found")
 
-        print(f"✅ Reconstructed {reconstructed_count} events from {event_messages_found} event messages (scanned {total_messages_scanned} total messages)")
+        end_time = asyncio.get_event_loop().time()
+        duration = end_time - start_time
+        logger.info(f"✅ Reconstructed {reconstructed_count} events from {event_messages_found} event messages (scanned {total_messages_scanned} total messages) in {duration:.2f} seconds")
         return reconstructed_count
     
     async def _process_message_for_events(self, message):
@@ -513,7 +531,7 @@ class EventTracker:
         # Store the event
         self.events[event_id] = event
         attendance_user_list = [user[0] for user in event['attendance'].values()] + manual_attendance_users
-        print(f"📝 Reconstructed event: {event_name} (ID: {event_id}, multiplier: {embed_multiplier}x, attendance: {attendance_user_list})")
+        logger.info(f"📝 Reconstructed event: {event_name} (ID: {event_id}, multiplier: {embed_multiplier}x, attendance: {attendance_user_list})")
         return True
     
     async def _process_reactions_for_event(self, event, message):
@@ -536,7 +554,7 @@ class EventTracker:
                 # Process results
                 for result in reaction_results:
                     if isinstance(result, Exception):
-                        print(f"⚠️ Error fetching reaction users: {result}")
+                        logger.warning(f"⚠️ Error fetching reaction users: {result}")
                         continue
                     
                     emoji_str, users = result
@@ -552,7 +570,7 @@ class EventTracker:
                             event['attendance'][user.id][1].append(emoji_str)
                         
         except Exception as e:
-            print(f"⚠️ Error processing reactions for event {event['name']}: {e}")
+            logger.error(f"⚠️ Error processing reactions for event {event['name']}: {e}")
     
     async def _fetch_reaction_users(self, reaction, emoji_str):
         """Helper method to fetch all users for a reaction"""
@@ -562,7 +580,7 @@ class EventTracker:
                 users.append(user)
             return (emoji_str, users)
         except Exception as e:
-            print(f"⚠️ Error fetching users for reaction {emoji_str}: {e}")
+            logger.warning(f"⚠️ Error fetching users for reaction {emoji_str}: {e}")
             return (emoji_str, [])
 
 # Initialize event tracker
@@ -647,8 +665,8 @@ def multiplier_to_emoji_string(multiplier: float) -> str:
 async def on_ready():
     global hundred_emoji, seventy_five_emoji, fifty_emoji, twenty_five_emoji
     
-    print(f'{bot.user} has connected to Discord!')
-    print(f'Bot is in {len(bot.guilds)} guilds')
+    logger.info(f'{bot.user} has connected to Discord!')
+    logger.info(f'Bot is in {len(bot.guilds)} guilds')
     
     # Load emojis once at startup for performance
     try:
@@ -672,21 +690,21 @@ async def on_ready():
                 missing_emojis.append(EMOJI_TWENTY_FIVE)
             
             if missing_emojis:
-                print(f"⚠️ Warning: Could not find emojis: {', '.join(missing_emojis)}")
+                logger.warning(f"⚠️ Warning: Could not find emojis: {', '.join(missing_emojis)}")
             else:
-                print(f"✅ Successfully loaded all emojis: {EMOJI_HUNDRED}, {EMOJI_SEVENTY_FIVE}, {EMOJI_FIFTY}, {EMOJI_TWENTY_FIVE}")
+                logger.info(f"✅ Successfully loaded all emojis: {EMOJI_HUNDRED}, {EMOJI_SEVENTY_FIVE}, {EMOJI_FIFTY}, {EMOJI_TWENTY_FIVE}")
         else:
-            print("❌ No guilds found - emojis cannot be loaded")
+            logger.error("❌ No guilds found - emojis cannot be loaded")
     except Exception as e:
-        print(f"❌ Error loading emojis: {e}")
+        logger.error(f"❌ Error loading emojis: {e}")
     
     # Reconstruct events from message history
     try:
         reconstructed_count = await event_tracker.reconstruct_from_history(bot)
-        print(f'🚀 Bot ready! Reconstructed {reconstructed_count} events from history.')
+        logger.info(f'🚀 Bot ready! Reconstructed {reconstructed_count} events from history.')
     except Exception as e:
-        print(f'❌ Error during event reconstruction: {e}')
-        print('🚀 Bot ready! (Running without historical events)')
+        logger.error(f'❌ Error during event reconstruction: {e}')
+        logger.info('🚀 Bot ready! (Running without historical events)')
 
 async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, emoji: str, color: discord.Color):
     """Helper function to create events with multipliers"""
@@ -697,7 +715,7 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     # Check if emojis are loaded
     if not all([hundred_emoji, seventy_five_emoji, fifty_emoji, twenty_five_emoji]):
         await ctx.send("❌ Error: Required emojis are not loaded. Please contact an administrator.")
-        print("❌ Error: Attempted to create event but emojis are not loaded")
+        logger.error("❌ Error: Attempted to create event but emojis are not loaded")
         return
     
     # Generate unique event ID
@@ -992,7 +1010,7 @@ async def event_summary_error(ctx, error):
         await ctx.send(error_message)
     else:
         await ctx.send("An unexpected error occurred. Please tell Waffle or Beetle.")
-        print(f"An unhandled error in event_summary occurred: {error}")
+        logger.error(f"An unhandled error in event_summary occurred: {error}")
 
 @bot.command(name='summary')
 async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None):
@@ -1073,8 +1091,17 @@ async def generate_summary(ctx, start_timestamp: str, end_timestamp: str = None)
             
     except ValueError as e:
         await ctx.send(f"Invalid timestamp format. Error: {str(e)}")
+        logger.error(f"Error parsing timestamp in summary command: {e}")
     except Exception as e:
         await ctx.send(f"An error occurred while generating the summary: {str(e)}")
+        logger.error(f"Error in summary command: {e}")
+
+@generate_summary.error
+async def generate_summary_error(ctx, error):
+    if isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(f"❌ Missing start date! Usage: `{BOT_PREFIX}summary YYYY-MM-DD` or `{BOT_PREFIX}summary \"2024-01-01 12:00:00\"`")
+    else:
+        logger.error(f"An unhandled error in summary occurred: {error}")
 
 @bot.command(name='delete_event')
 async def delete_event(ctx, event_id: str):
@@ -1508,8 +1535,24 @@ async def help_events(ctx):
 
 if __name__ == "__main__":
     if not DISCORD_TOKEN:
-        print("Error: DISCORD_TOKEN not found in environment variables")
-        print("Please create a .env file with your Discord bot token")
-        exit(1)
+        logger.error("Error: DISCORD_TOKEN not found in environment variables")
+        logger.error("Please create a .env file with your Discord bot token")
+        sys.exit(1)
     
-    bot.run(DISCORD_TOKEN)
+    retry_delay = 30  # seconds to wait between connection attempts
+    
+    while True:
+        try:
+            logger.info("Attempting to connect to Discord...")
+            # Passing log_handler=None prevents discord.py from setting up its own logging
+            # and duplicating our custom logging configuration.
+            bot.run(DISCORD_TOKEN, log_handler=None)
+            
+            # If bot.run() returns normally, it was likely a clean shutdown
+            logger.info("Bot execution finished normally.")
+            break
+            
+        except Exception as e:
+            logger.error(f"Bot failed to start or connection lost: {e}")
+            logger.info(f"Retrying in {retry_delay} seconds... (Press Ctrl+C to stop)")
+            time.sleep(retry_delay)

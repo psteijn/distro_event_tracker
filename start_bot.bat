@@ -6,13 +6,16 @@ echo.
 
 call init.bat
 
+REM Set default ENV_FILE if not set
+if "%ENV_FILE%"=="" set ENV_FILE=.env
+
 REM Check if Discord token is set
 echo.
-echo Checking Discord bot token...
-findstr /C:"DISCORD_TOKEN=your_bot_token_here" .env >nul
+echo Checking Discord bot token in %ENV_FILE%...
+findstr /C:"DISCORD_TOKEN=your_bot_token_here" %ENV_FILE% >nul
 if not errorlevel 1 (
     echo ERROR: Discord bot token not configured!
-    echo Please edit .env file and replace 'your_bot_token_here' with your actual bot token
+    echo Please edit %ENV_FILE% file and replace 'your_bot_token_here' with your actual bot token
     pause
     exit /b 1
 )

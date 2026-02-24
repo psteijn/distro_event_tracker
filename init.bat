@@ -11,16 +11,23 @@ if errorlevel 1 (
 echo Python found: 
 python --version
 
-REM Check if .env file exists
-if not exist ".env" (
+REM Set default ENV_FILE if not set
+if "%ENV_FILE%"=="" set ENV_FILE=.env
+
+REM Check if environment file exists
+if not exist "%ENV_FILE%" (
     echo.
-    echo WARNING: .env file not found!
-    echo Please copy env_example.txt to .env and add your Discord bot token
-    echo.
-    echo Creating .env file from template...
-    copy env_example.txt .env
-    echo.
-    echo Please edit .env file and add your Discord bot token, then run this script again.
+    echo WARNING: %ENV_FILE% not found!
+    if "%ENV_FILE%"==".env" (
+        echo Please copy env_example.txt to .env and add your Discord bot token
+        echo.
+        echo Creating .env file from template...
+        copy env_example.txt .env
+        echo.
+        echo Please edit .env file and add your Discord bot token, then run this script again.
+    ) else (
+        echo Please ensure %ENV_FILE% exists with your configuration.
+    )
     pause
     exit /b 1
 )

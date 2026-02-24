@@ -1,5 +1,11 @@
-# Environment variables
-.env
+# Environment variables and local configs
+.env*
+!env_example.txt
+
+# Bot logs
+*.log
+distro_task_log.txt
+ocean_distro_task_log.txt
 
 # Virtual environment
 venv/
