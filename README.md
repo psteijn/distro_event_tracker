@@ -4,13 +4,12 @@ A robust Discord bot for tracking gaming events and attendance through custom em
 
 ## 🚀 Key Features
 
-- **Consolidated Smart Summary**: A single `!summary` command that intelligently handles Event IDs, ranges, "Last N" events, and date-based fallbacks.
-- **Participation Reminders**: Automatically DMs active players who forget to react to a new event within 2 minutes (if the event started within 2 hours of the previous one).
-- **Discord-Native Timestamps**: Uses Discord's server time (`created_at`) as the source of truth to eliminate "desync" between the bot and users.
-- **Multi-Instance Support**: Easily run multiple bot instances (e.g., "Distro" and "Ocean") from a single codebase using dedicated environment files.
-- **Deterministic Tracking**: Move beyond brittle "start/end seconds" math. Use specific Event IDs for 100% accurate, inclusive range reports.
-- **Auto-Recovery**: Rebuilds the entire event state from Discord message history on startup (No database required).
-- **Advanced Logging**: Persistent file-based logs with configurable paths for every instance.
+- **Intelligent Event Summaries**: Get detailed attendance reports for a single run, a specific range of runs, or just your most recent activity using one simple command.
+- **Automatic Participation Reminders**: Helps keep your group together by sending a polite DM to players who attended the last run but haven't signed up for the new one yet.
+- **Weighted Scoring System**: Different event types (like Bosses vs. Dungeons) give different point values, ensuring players are fairly rewarded for more difficult content.
+- **Instant Setup & Recovery**: The bot builds its memory directly from your channel history. No database is required, and the bot "remembers" everything instantly after a restart.
+- **Accurate Time Tracking**: Uses Discord's server time as the source of truth, so your summaries and timestamps are always perfectly synced with the chat.
+- **Multi-Group Support**: Easily run separate bot instances for different teams or guilds from a single installation.
 
 ---
 
