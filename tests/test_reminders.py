@@ -114,6 +114,20 @@ async def test_reminder_skipped_if_historical(mock_bot, tracker):
         mock_sleep.assert_not_called()
 
 @pytest.mark.asyncio
+async def test_reminder_absolute_age_skip(mock_bot, tracker):
+    """If the event is > 10m old, logic should exit early regardless of metadata."""
+    new_event = tracker.create_event("old", "Old", 1, 100, 1, 1000.0, type_emoji="🏰", is_historical=False)
+    
+    with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep, \
+         patch('reminders.datetime') as mock_datetime:
+        
+        # Mock current time to be 11 minutes after the event
+        mock_datetime.now.return_value.timestamp.return_value = 1000.0 + 660.0
+        
+        await handle_event_reminder(mock_bot, tracker, new_event, None)
+        mock_sleep.assert_not_called()
+
+@pytest.mark.asyncio
 async def test_reminder_throttles_dms(mock_bot, tracker):
     """Verify that we sleep between DMs to avoid rate limits."""
     tracker.create_event("old", "Old", 1, 50, 5, 1000.0, type_emoji="🏰")
