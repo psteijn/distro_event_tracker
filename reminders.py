@@ -106,15 +106,13 @@ async def handle_event_reminder(bot, event_tracker, new_event, PACIFIC_TZ):
 
             try:
                 embed = discord.Embed(
-                    title="🛡️ Event Reminder",
-                    description=f"""A new **{icon} {event_name}** event was started by **{creator_name}**!
-
-You're receiving this because you reacted to an event in the last 2 hours.""",
+                    title=f"🛡️ {icon} {event_name}",
+                    description=f"**{creator_name}** started a new event and you haven't reacted yet!",
                     color=discord.Color.blue()
                 )
                 embed.add_field(
-                    name="Action Required",
-                    value=f"[**Click here to jump to the event and react!**]({jump_url})",
+                    name="Action",
+                    value=f"[**Jump to Event & React**]({jump_url})",
                     inline=False
                 )
                 

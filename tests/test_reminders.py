@@ -82,7 +82,9 @@ async def test_reminder_identifies_missing_users_and_excludes_creator(mock_bot, 
         # Verify jump link was in the DM (check embed)
         args, kwargs = mock_user_20.send.call_args
         embed = kwargs.get('embed')
-        assert embed.fields[0].value == "[**Click here to jump to the event and react!**](http://discord/jump)"
+        assert embed.title == "🛡️  New"
+        assert "you haven't reacted yet!" in embed.description
+        assert embed.fields[0].value == "[**Jump to Event & React**](http://discord/jump)"
 
 @pytest.mark.asyncio
 async def test_reminder_throttles_dms(mock_bot, tracker):
