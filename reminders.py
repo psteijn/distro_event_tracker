@@ -79,10 +79,6 @@ async def handle_event_reminder(bot, event_tracker, new_event, PACIFIC_TZ):
         # Identify the delta
         missing_ids = prev_attendees - new_attendees
         
-        # Exclude creator
-        creator_id = new_event['creator_id']
-        missing_ids.discard(creator_id)
-
         if not missing_ids:
             logger.info(f"No reminders needed for '{new_event['name']}'. Everyone already reacted.")
             return
@@ -93,6 +89,7 @@ async def handle_event_reminder(bot, event_tracker, new_event, PACIFIC_TZ):
         event_name = new_event['name']
         
         # Fetch creator for the DM context
+        creator_id = new_event['creator_id']
         creator = bot.get_user(creator_id)
         creator_name = creator.name if creator else "a teammate"
 
