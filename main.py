@@ -10,6 +10,7 @@ import time
 from typing import Dict, List, Optional
 import pytz
 from config import DISCORD_TOKEN, BOT_PREFIX, EVENT_CHANNEL_ID, EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE
+from reminders import handle_event_reminder
 
 # Logging configuration
 log_file = os.getenv('LOG_FILE', 'bot.log')
@@ -319,6 +320,22 @@ class EventTracker:
         """Get the most recent N events"""
         all_events = sorted(self.events.values(), key=lambda x: x['created_at'], reverse=True)
         return sorted(all_events[:n], key=lambda x: x['created_at'])
+    
+    def get_most_recent_before(self, event_id: str) -> Optional[Dict]:
+        """Find the most recent event created before the given event ID"""
+        if event_id not in self.events:
+            return None
+            
+        target_event = self.events[event_id]
+        target_time = target_event['created_at']
+        
+        # Filter for events before the target and sort by time descending
+        events_before = [e for e in self.events.values() if e['created_at'] < target_time]
+        if not events_before:
+            return None
+            
+        sorted_before = sorted(events_before, key=lambda x: x['created_at'], reverse=True)
+        return sorted_before[0]
     
     def generate_summary(self, events: List[Dict]) -> Dict:
         """Generate attendance summary for events"""
@@ -797,6 +814,9 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     await event_message.add_reaction(seventy_five_emoji)
     await event_message.add_reaction(fifty_emoji)
     await event_message.add_reaction(twenty_five_emoji)
+    
+    # Trigger asynchronous reminder task
+    asyncio.create_task(handle_event_reminder(bot, event_tracker, event, PACIFIC_TZ))
 
 @bot.command(name='dungeon')
 async def dungeon(ctx, *, dungeon_name: str):
