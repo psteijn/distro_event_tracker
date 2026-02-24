@@ -52,12 +52,29 @@ async def handle_event_reminder(bot, event_tracker, new_event, PACIFIC_TZ):
         # 3. Wait 120 seconds
         await asyncio.sleep(120)
 
-        # 4. Identify those who haven't reacted yet
+        # 4. Fetch the message again to get LATEST reactions
+        channel = bot.get_channel(new_event['channel_id'])
+        if not channel:
+            logger.error(f"Could not find channel {new_event['channel_id']} for reminders")
+            return
+            
+        try:
+            message = await channel.fetch_message(new_event['message_id'])
+            jump_url = message.jump_url
+        except Exception as e:
+            logger.error(f"Could not fetch message {new_event['message_id']} for reminders: {e}")
+            return
+
+        # 5. Identify current attendees from ACTUAL reactions on the message
+        new_attendees = set()
+        for reaction in message.reactions:
+            async for user in reaction.users():
+                if not user.bot:
+                    new_attendees.add(user.id)
+
+        # 6. Identify those who haven't reacted yet
         # Get users from previous event (only reactions)
         prev_attendees = set(prev_event['attendance'].keys())
-        
-        # Get users from new event (reactions)
-        new_attendees = set(new_event['attendance'].keys())
         
         # Identify the delta
         missing_ids = prev_attendees - new_attendees
@@ -72,19 +89,6 @@ async def handle_event_reminder(bot, event_tracker, new_event, PACIFIC_TZ):
 
         logger.info(f"Sending reminders for '{new_event['name']}' to {len(missing_ids)} users.")
 
-        # 5. Fetch Discord objects for messaging
-        channel = bot.get_channel(new_event['channel_id'])
-        if not channel:
-            logger.error(f"Could not find channel {new_event['channel_id']} for jump link")
-            return
-            
-        try:
-            message = await channel.fetch_message(new_event['message_id'])
-            jump_url = message.jump_url
-        except Exception as e:
-            logger.error(f"Could not fetch message {new_event['message_id']}: {e}")
-            return
-
         icon = new_event.get('type_emoji', '')
         event_name = new_event['name']
         
@@ -92,7 +96,7 @@ async def handle_event_reminder(bot, event_tracker, new_event, PACIFIC_TZ):
         creator = bot.get_user(creator_id)
         creator_name = creator.name if creator else "a teammate"
 
-        # 6. Send DMs with throttling
+        # 7. Send DMs with throttling
         for user_id in missing_ids:
             user = bot.get_user(user_id)
             if not user:

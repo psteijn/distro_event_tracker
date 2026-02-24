@@ -61,10 +61,23 @@ async def test_reminder_identifies_missing_users_and_excludes_creator(mock_bot, 
     mock_channel = MagicMock()
     mock_message = MagicMock()
     mock_message.jump_url = "http://discord/jump"
+    
+    # Mock reactions
+    mock_reaction = MagicMock()
+    mock_user_30 = MagicMock()
+    mock_user_30.bot = False
+    mock_user_30.id = 30
+    
+    async def mock_users():
+        yield mock_user_30
+        
+    mock_reaction.users = mock_users
+    mock_message.reactions = [mock_reaction]
+    
     mock_channel.fetch_message = AsyncMock(return_value=mock_message)
     mock_bot.get_channel.return_value = mock_channel
     
-    # Mock users
+    # Mock users for DM
     mock_user_20 = AsyncMock()
     mock_user_20.bot = False
     mock_user_20.name = "Bob"
@@ -99,6 +112,7 @@ async def test_reminder_throttles_dms(mock_bot, tracker):
     mock_channel = MagicMock()
     mock_message = MagicMock()
     mock_message.jump_url = "http://discord/jump"
+    mock_message.reactions = [] # No one reacted
     mock_channel.fetch_message = AsyncMock(return_value=mock_message)
     mock_bot.get_channel.return_value = mock_channel
     
