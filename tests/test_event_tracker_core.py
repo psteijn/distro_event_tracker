@@ -19,6 +19,7 @@ def test_create_event_initializes_fields():
         creator_id=789,
         created_at=100.0,
         multiplier=2.0,
+        is_historical=False
     )
     assert "evt1" in tracker.events
     assert event["name"] == "Test Event"
@@ -27,6 +28,7 @@ def test_create_event_initializes_fields():
     assert event["attendance"] == {}
     assert event["manual_attendance"] == []
     assert event["created_at"] == 100.0
+    assert event["is_historical"] is False
 
 
 def test_add_attendance_new_user():

@@ -246,7 +246,7 @@ class EventTracker:
     def __init__(self):
         self.events = {}
     
-    def create_event(self, event_id: str, name: str, channel_id: int, message_id: int, creator_id: int, created_at: float, multiplier: float = 1.0, type_emoji: str = "") -> Dict:
+    def create_event(self, event_id: str, name: str, channel_id: int, message_id: int, creator_id: int, created_at: float, multiplier: float = 1.0, type_emoji: str = "", is_historical: bool = False) -> Dict:
         """Create a new event with a multiplier for scoring"""
         event = {
             'id': event_id,
@@ -258,7 +258,8 @@ class EventTracker:
             'created_at': created_at,
             'multiplier': multiplier,
             'attendance': {},
-            'manual_attendance': []
+            'manual_attendance': [],
+            'is_historical': is_historical
         }
         self.events[event_id] = event
         return event
@@ -451,7 +452,7 @@ class EventTracker:
                 
                 event_messages_found += 1
                 
-                if await self._process_message_for_events(message):
+                if await self._process_message_for_events(message, is_historical=True):
                     reconstructed_count += 1
         else:
             logger.error(f"❌ Channel {EVENT_CHANNEL_ID} not found")
@@ -461,7 +462,7 @@ class EventTracker:
         logger.info(f"✅ Reconstructed {reconstructed_count} events from {event_messages_found} event messages (scanned {total_messages_scanned} total messages) in {duration:.2f} seconds")
         return reconstructed_count
     
-    async def _process_message_for_events(self, message):
+    async def _process_message_for_events(self, message, is_historical: bool = False):
         """Process a single message to check if it's an event message"""
         # Check if message has embeds (event messages use embeds)
         if not message.embeds:
@@ -576,7 +577,8 @@ class EventTracker:
             'created_at': created_at_timestamp,
             'multiplier': embed_multiplier,
             'attendance': {},
-            'manual_attendance': manual_attendance_users
+            'manual_attendance': manual_attendance_users,
+            'is_historical': is_historical
         }
         
         # Process reactions to get attendance
@@ -809,14 +811,11 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     event['message_id'] = event_message.id
     event_tracker.events[event_id]['message_id'] = event_message.id
 
-    # Add the four "default" reaction emojis that allow people to record their attendance.
-    await event_message.add_reaction(hundred_emoji)
-    await event_message.add_reaction(seventy_five_emoji)
-    await event_message.add_reaction(fifty_emoji)
     await event_message.add_reaction(twenty_five_emoji)
     
-    # Trigger asynchronous reminder task
-    asyncio.create_task(handle_event_reminder(bot, event_tracker, event, PACIFIC_TZ))
+    # Trigger asynchronous reminder task (only for live events)
+    if not event.get('is_historical', False):
+        asyncio.create_task(handle_event_reminder(bot, event_tracker, event, PACIFIC_TZ))
 
 @bot.command(name='dungeon')
 async def dungeon(ctx, *, dungeon_name: str):

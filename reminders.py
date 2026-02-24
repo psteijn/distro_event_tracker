@@ -35,6 +35,15 @@ async def handle_event_reminder(bot, event_tracker, new_event, PACIFIC_TZ):
     but haven't reacted to the new one yet.
     """
     try:
+        # 0. Safety Check: If event is already historical or too old, skip
+        if new_event.get('is_historical', False):
+            return
+            
+        current_time = datetime.now(PACIFIC_TZ).timestamp()
+        if (current_time - new_event['created_at']) > 600:
+            logger.info(f"Reminder skipped for '{new_event['name']}': Event is too old (>10m).")
+            return
+
         # 1. Find previous event
         prev_event = event_tracker.get_most_recent_before(new_event['id'])
         if not prev_event:

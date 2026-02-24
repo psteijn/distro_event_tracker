@@ -54,6 +54,7 @@ async def test_reminder_identifies_missing_users_and_includes_creator(mock_bot, 
     tracker.add_attendance("old", 20, "Bob", "X")
     
     # New event (created by Alice/10)
+    # Use a recent timestamp to pass the age check
     new_event = tracker.create_event("new", "New", 1, 100, 10, 2000.0, type_emoji="🏰")
     tracker.add_attendance("new", 30, "Charlie", "X") # Charlie reacted early
     
@@ -88,7 +89,12 @@ async def test_reminder_identifies_missing_users_and_includes_creator(mock_bot, 
     
     mock_bot.get_user.side_effect = lambda uid: {10: mock_user_10, 20: mock_user_20}.get(uid)
 
-    with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
+    with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep, \
+         patch('reminders.datetime') as mock_datetime:
+        
+        # Mock current time to be close to new_event
+        mock_datetime.now.return_value.timestamp.return_value = 2005.0
+        
         await handle_event_reminder(mock_bot, tracker, new_event, None)
         
         # Verify 120s wait happened
@@ -97,6 +103,15 @@ async def test_reminder_identifies_missing_users_and_includes_creator(mock_bot, 
         # Verify DM sent to both Alice (creator) and Bob
         assert mock_user_10.send.call_count == 1
         assert mock_user_20.send.call_count == 1
+
+@pytest.mark.asyncio
+async def test_reminder_skipped_if_historical(mock_bot, tracker):
+    """If the event is marked as historical, logic should exit early."""
+    new_event = tracker.create_event("hist", "Historical", 1, 100, 1, 5000.0, type_emoji="🏰", is_historical=True)
+    
+    with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
+        await handle_event_reminder(mock_bot, tracker, new_event, None)
+        mock_sleep.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_reminder_throttles_dms(mock_bot, tracker):
@@ -119,7 +134,12 @@ async def test_reminder_throttles_dms(mock_bot, tracker):
     u1.bot = u2.bot = False
     mock_bot.get_user.side_effect = lambda uid: {1: u1, 2: u2}.get(uid)
 
-    with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
+    with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep, \
+         patch('reminders.datetime') as mock_datetime:
+        
+        # Mock current time to be close to new_event (2000.0)
+        mock_datetime.now.return_value.timestamp.return_value = 2005.0
+        
         await handle_event_reminder(mock_bot, tracker, new_event, None)
         
         # Should sleep 120s once, and 1.0s twice (once for each user)
