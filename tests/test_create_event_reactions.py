@@ -63,12 +63,12 @@ async def test_create_event_adds_all_four_emoji_reactions(monkeypatch):
     await create_event_with_multiplier(ctx, "Test Dungeon", 1.0, "🏰", discord.Color.blue())
 
     assert len(event_message.added_reactions) == 4, (
-        "Expected 4 emoji reactions (25%%, 50%%, 75%%, 100%%) on the event message; "
+        "Expected 4 emoji reactions (100%%, 75%%, 50%%, 25%%) on the event message; "
         "got %r" % event_message.added_reactions
     )
     assert event_message.added_reactions == [
-        EMOJI_TWENTY_FIVE,
-        EMOJI_FIFTY,
-        EMOJI_SEVENTY_FIVE,
         EMOJI_HUNDRED,
-    ], "Reactions should be in order: 25%%, 50%%, 75%%, 100%%"
+        EMOJI_SEVENTY_FIVE,
+        EMOJI_FIFTY,
+        EMOJI_TWENTY_FIVE,
+    ], "Reactions should be in order: 100%%, 75%%, 50%%, 25%%"

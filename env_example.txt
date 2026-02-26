@@ -6,5 +6,9 @@ DISCORD_TOKEN=your_bot_token_here
 
 # Optional: Set a specific channel ID for events (leave empty to allow events in any channel)
 # EVENT_CHANNEL_ID=1234567890123456789
+
+# Admin IDs - comma separated list of user IDs who can delete any event
+# ADMIN_IDS=1234567890,9876543210
+
 # Log file path
 LOG_FILE=bot.log

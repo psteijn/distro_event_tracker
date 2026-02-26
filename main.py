@@ -9,7 +9,7 @@ import logging
 import time
 from typing import Dict, List, Optional
 import pytz
-from config import DISCORD_TOKEN, BOT_PREFIX, EVENT_CHANNEL_ID, EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE
+from config import DISCORD_TOKEN, BOT_PREFIX, EVENT_CHANNEL_ID, EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE, ADMIN_IDS
 from reminders import handle_event_reminder
 
 # Logging configuration
@@ -811,10 +811,10 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     event['message_id'] = event_message.id
     event_tracker.events[event_id]['message_id'] = event_message.id
 
-    await event_message.add_reaction(twenty_five_emoji)
-    await event_message.add_reaction(fifty_emoji)
-    await event_message.add_reaction(seventy_five_emoji)
     await event_message.add_reaction(hundred_emoji)
+    await event_message.add_reaction(seventy_five_emoji)
+    await event_message.add_reaction(fifty_emoji)
+    await event_message.add_reaction(twenty_five_emoji)
     
     # Trigger asynchronous reminder task (only for live events)
     if not event.get('is_historical', False):
@@ -1124,8 +1124,9 @@ async def delete_event(ctx, event_id: str):
         
         event = event_tracker.events[event_id]
         
-        # Check if user is the event creator
-        if event['creator_id'] != ctx.author.id:
+        # Check if user is the event creator or an administrator
+        is_admin = ctx.author.id in ADMIN_IDS
+        if event['creator_id'] != ctx.author.id and not is_admin:
             await ctx.send(f"❌ You can only delete events that you created. This event was created by someone else.")
             return
         

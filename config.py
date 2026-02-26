@@ -9,6 +9,9 @@ load_dotenv(dotenv_path=env_file)
 # Discord Bot Configuration
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 
+# Admin IDs - list of user IDs who have administrative privileges (e.g., delete any event)
+ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADMIN_IDS', '').split(',') if id.strip()]
+
 # Bot Settings
 BOT_PREFIX = '!'
 EVENT_CHANNEL_ID = os.getenv('EVENT_CHANNEL_ID')
