@@ -3,6 +3,7 @@ class DummyAuthor:
     def __init__(self, name="TestUser", user_id=1):
         self.name = name
         self.id = user_id
+        self.mention = f"@{name}"
 
 
 class DummyCtx:

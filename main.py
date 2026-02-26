@@ -812,6 +812,9 @@ async def create_event_with_multiplier(ctx, event_name: str, multiplier: float, 
     event_tracker.events[event_id]['message_id'] = event_message.id
 
     await event_message.add_reaction(twenty_five_emoji)
+    await event_message.add_reaction(fifty_emoji)
+    await event_message.add_reaction(seventy_five_emoji)
+    await event_message.add_reaction(hundred_emoji)
     
     # Trigger asynchronous reminder task (only for live events)
     if not event.get('is_historical', False):
