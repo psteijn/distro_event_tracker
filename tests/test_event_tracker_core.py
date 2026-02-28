@@ -4,7 +4,16 @@ from config import EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY
 
 def setup_event_with_tracker():
     tracker = EventTracker()
-    tracker.create_event("evt1", "Test Event", channel_id=1, message_id=2, creator_id=3, created_at=100.0, multiplier=1.0, type_emoji="🏰")
+    tracker.create_event(
+        "evt1",
+        "Test Event",
+        channel_id=1,
+        message_id=2,
+        creator_id=3,
+        created_at=100.0,
+        multiplier=1.0,
+        type_emoji="🏰",
+    )
     return tracker
 
 
@@ -19,7 +28,7 @@ def test_create_event_initializes_fields():
         creator_id=789,
         created_at=100.0,
         multiplier=2.0,
-        is_historical=False
+        is_historical=False,
     )
     assert "evt1" in tracker.events
     assert event["name"] == "Test Event"
@@ -58,9 +67,9 @@ def test_remove_attendance_removes_emoji_and_user():
 
 def test_get_events_in_range_filters_by_created_at():
     tracker = EventTracker()
-    e1 = tracker.create_event("evt1", "Old", 1, 2, 3, 10.0, type_emoji="🏰")
-    e2 = tracker.create_event("evt2", "Mid", 1, 2, 3, 20.0, type_emoji="🏰")
-    e3 = tracker.create_event("evt3", "New", 1, 2, 3, 30.0, type_emoji="🏰")
+    tracker.create_event("evt1", "Old", 1, 2, 3, 10.0, type_emoji="🏰")
+    tracker.create_event("evt2", "Mid", 1, 2, 3, 20.0, type_emoji="🏰")
+    tracker.create_event("evt3", "New", 1, 2, 3, 30.0, type_emoji="🏰")
 
     events = tracker.get_events_in_range(15, 30)
     ids = {e["id"] for e in events}
@@ -97,8 +106,8 @@ def test_calculate_weighted_average_across_events():
         {
             "multiplier": 1.0,
             "attendance_by_user": {
-                1: ("Alice", [EMOJI_HUNDRED]),    # 1.0
-                2: ("Bob", [EMOJI_FIFTY]),        # 0.5
+                1: ("Alice", [EMOJI_HUNDRED]),  # 1.0
+                2: ("Bob", [EMOJI_FIFTY]),  # 0.5
             },
         },
         {

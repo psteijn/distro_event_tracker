@@ -1,4 +1,3 @@
-
 from main import calculate_event_weighted_scores
 from config import EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE
 
@@ -68,8 +67,8 @@ def test_weighted_scores_manual_attendance_included():
 def test_weighted_scores_sorted_descending():
     event = make_base_event()
     event["attendance"] = {
-        1: ("Alice", [EMOJI_HUNDRED]),      # 1.0
-        2: ("Bob", [EMOJI_FIFTY]),          # 0.5
+        1: ("Alice", [EMOJI_HUNDRED]),  # 1.0
+        2: ("Bob", [EMOJI_FIFTY]),  # 0.5
     }
     event["manual_attendance"] = [
         {"name": "Charlie", "multiplier": 0.75},

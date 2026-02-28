@@ -1,4 +1,3 @@
-
 import pytest
 from main import parse_timestamp, PACIFIC_TZ
 
