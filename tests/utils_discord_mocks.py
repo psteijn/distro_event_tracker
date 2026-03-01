@@ -1,5 +1,6 @@
 class DummyAuthor:
     """Minimal stand-in for ctx.author."""
+
     def __init__(self, name="TestUser", user_id=1):
         self.name = name
         self.id = user_id
@@ -8,6 +9,7 @@ class DummyAuthor:
 
 class DummyCtx:
     """Minimal stand-in for a discord.py Context."""
+
     def __init__(self, author=None):
         self.sent = []
         if author is not None:
@@ -21,6 +23,7 @@ class DummyCtx:
 
 class FakeMessage:
     """Fake Discord message object with just enough surface for add_users."""
+
     def __init__(self, message_id=456, embeds=None):
         self.id = message_id
         self.embeds = embeds or []
@@ -36,6 +39,7 @@ class FakeMessage:
 
 class FakeChannel:
     """Fake channel that returns a preconfigured message."""
+
     def __init__(self, message):
         self._message = message
 
@@ -46,6 +50,7 @@ class FakeChannel:
 
 class FakeMember:
     """Minimal stand-in for a discord.Member."""
+
     def __init__(self, name):
         self.name = name
         # mention is not strictly needed for add_users, but handy if used later

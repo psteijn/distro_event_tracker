@@ -1,9 +1,8 @@
-
 import pytest
 import discord
 
 import main
-from main import event_tracker, add_users, multiplier_to_emoji_string
+from main import event_tracker, add_users
 from tests.utils_discord_mocks import DummyCtx, FakeMessage, FakeChannel, FakeMember
 from config import EMOJI_HUNDRED
 
@@ -211,9 +210,7 @@ async def test_add_users_overwrites_existing_manual_and_updates_embed(monkeypatc
 
     # Manual attendance should contain a single entry for Alice with new multiplier
     event = event_tracker.events["evt1"]
-    assert event["manual_attendance"] == [
-        {"name": "Alice", "multiplier": 0.75}
-    ]
+    assert event["manual_attendance"] == [{"name": "Alice", "multiplier": 0.75}]
 
     # Should have sent a success message only
     assert len(ctx.sent) == 1

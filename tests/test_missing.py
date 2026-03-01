@@ -1,5 +1,4 @@
 import pytest
-import main
 from main import event_tracker, missing
 from tests.utils_discord_mocks import DummyCtx
 
