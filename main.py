@@ -426,9 +426,11 @@ class EventTracker:
             # Optimization #1: Early filtering - only process bot messages with embeds
             async for message in channel.history(limit=1000):
                 total_messages_scanned += 1
-                
+
                 if total_messages_scanned % 100 == 0:
-                    logger.info(f"⏳ Reconstruction progress: Scanned {total_messages_scanned} messages, found {event_messages_found} events so far...")
+                    logger.info(
+                        f"⏳ Reconstruction progress: Scanned {total_messages_scanned} messages, found {event_messages_found} events so far..."
+                    )
 
                 # Early filtering: Skip non-bot messages immediately
                 if message.author != bot.user:
@@ -598,25 +600,25 @@ class EventTracker:
             # Optimization #2: Parallel reaction processing
             # Collect all reaction tasks first
             reaction_tasks = []
-            
+
             # Only process participation emojis
             valid_emojis = {EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE}
-            
+
             for reaction in message.reactions:
                 emoji_str = str(reaction.emoji)
-                
+
                 # Extract emoji name if it's a custom emoji
                 emoji_name = None
                 if emoji_str.startswith('<:') and emoji_str.endswith('>'):
                     emoji_name = emoji_str.split(':')[1]
                 else:
                     emoji_name = emoji_str
-                
+
                 if emoji_name in valid_emojis:
                     # Create a task to fetch all users for this reaction
                     task = self._fetch_reaction_users(reaction, emoji_str)
                     reaction_tasks.append(task)
-            
+
             # Execute all reaction fetching in parallel
             if reaction_tasks:
                 reaction_results = await asyncio.gather(*reaction_tasks, return_exceptions=True)
@@ -924,7 +926,9 @@ async def add_users(ctx, event_id: str, multiplier: float, *members: discord.Mem
         try:
             channel = bot.get_channel(event['channel_id'])
             if not channel:
-                logger.error(f"Failed to update event message: Channel {event['channel_id']} not found.")
+                logger.error(
+                    f"Failed to update event message: Channel {event['channel_id']} not found."
+                )
                 await ctx.send(f"❌ Channel with ID `{event['channel_id']}` not found.")
                 return
 
