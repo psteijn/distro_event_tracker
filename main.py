@@ -426,6 +426,9 @@ class EventTracker:
             # Optimization #1: Early filtering - only process bot messages with embeds
             async for message in channel.history(limit=1000):
                 total_messages_scanned += 1
+                
+                if total_messages_scanned % 100 == 0:
+                    logger.info(f"⏳ Reconstruction progress: Scanned {total_messages_scanned} messages, found {event_messages_found} events so far...")
 
                 # Early filtering: Skip non-bot messages immediately
                 if message.author != bot.user:
@@ -595,13 +598,25 @@ class EventTracker:
             # Optimization #2: Parallel reaction processing
             # Collect all reaction tasks first
             reaction_tasks = []
-
+            
+            # Only process participation emojis
+            valid_emojis = {EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE}
+            
             for reaction in message.reactions:
                 emoji_str = str(reaction.emoji)
-                # Create a task to fetch all users for this reaction
-                task = self._fetch_reaction_users(reaction, emoji_str)
-                reaction_tasks.append(task)
-
+                
+                # Extract emoji name if it's a custom emoji
+                emoji_name = None
+                if emoji_str.startswith('<:') and emoji_str.endswith('>'):
+                    emoji_name = emoji_str.split(':')[1]
+                else:
+                    emoji_name = emoji_str
+                
+                if emoji_name in valid_emojis:
+                    # Create a task to fetch all users for this reaction
+                    task = self._fetch_reaction_users(reaction, emoji_str)
+                    reaction_tasks.append(task)
+            
             # Execute all reaction fetching in parallel
             if reaction_tasks:
                 reaction_results = await asyncio.gather(*reaction_tasks, return_exceptions=True)
@@ -771,6 +786,12 @@ async def on_ready():
         logger.info('🚀 Bot ready! (Running without historical events)')
 
 
+@bot.before_invoke
+async def before_any_command(ctx):
+    """Log every command invocation for better audit trails"""
+    logger.info(f"CMD: [{ctx.author}] invoked '{ctx.message.content}' in #{ctx.channel}")
+
+
 async def create_event_with_multiplier(
     ctx, event_name: str, multiplier: float, emoji: str, color: discord.Color
 ):
@@ -876,6 +897,9 @@ async def add_users(ctx, event_id: str, multiplier: float, *members: discord.Mem
 
         # Check if event exists
         if event_id not in event_tracker.events:
+            logger.warning(
+                f"Command 'add_users' failed: Event ID '{event_id}' not found. (User: {ctx.author})"
+            )
             await ctx.send(f"❌ Event with ID `{event_id}` not found.")
             return
 
@@ -900,6 +924,7 @@ async def add_users(ctx, event_id: str, multiplier: float, *members: discord.Mem
         try:
             channel = bot.get_channel(event['channel_id'])
             if not channel:
+                logger.error(f"Failed to update event message: Channel {event['channel_id']} not found.")
                 await ctx.send(f"❌ Channel with ID `{event['channel_id']}` not found.")
                 return
 
@@ -948,18 +973,18 @@ async def add_users(ctx, event_id: str, multiplier: float, *members: discord.Mem
             await ctx.send(
                 f"✅ Successfully added {len(member_names)} user(s) to event with {multiplier}x multiplier: {', '.join(member_names)}"
             )
-            print(
+            logger.info(
                 f"Added users to event {event_id}: {', '.join(member_names)} with {multiplier}x multiplier by {ctx.author.name}"
             )
 
         except Exception as e:
             # Error updating the event message
+            logger.error(f"Error updating message in add_users command: {e}")
             await ctx.send(f"❌ An error occurred while adding users: {str(e)}")
-            print(f"Error in add_users command: {e}")
 
     except Exception as e:
+        logger.error(f"Error in add_users command: {e}")
         await ctx.send(f"❌ An error occurred while adding users: {str(e)}")
-        print(f"Error in add_users command: {e}")
 
 
 # The error handler specifically for the add_users command
@@ -978,7 +1003,7 @@ async def add_users_error(ctx, error):
     else:
         # If it's a different error, you might want to log it or handle it differently
         await ctx.send("An unexpected error occurred. Please tell Waffle or Beetle.")
-        print(f"An unhandled error in add_users occurred: {error}")
+        logger.error(f"An unhandled error in add_users occurred: {error}")
 
 
 @bot.event
@@ -997,9 +1022,9 @@ async def on_reaction_add(reaction, user):
     if event_id:
         emoji_str = str(reaction.emoji)
         event_tracker.add_attendance(event_id, user.id, user.name, emoji_str)
-        print(
-            f"Added attendance: User {user.name} (display name: {user.display_name}) ({user.id}) reacted with {emoji_str} to event {event_id}"
-        )  # user.name is the account name
+        logger.info(
+            f"Added attendance: User {user.name} ({user.id}) reacted with {emoji_str} to event {event_id}"
+        )
 
 
 @bot.event
@@ -1018,9 +1043,9 @@ async def on_reaction_remove(reaction, user):
     if event_id:
         emoji_str = str(reaction.emoji)
         event_tracker.remove_attendance(event_id, user.id, user.name, emoji_str)
-        print(
+        logger.info(
             f"Removed attendance: User {user.name} ({user.id}) removed {emoji_str} from event {event_id}"
-        )  # user.name is the account name
+        )
 
 
 @bot.command(name='summary')
@@ -1159,6 +1184,9 @@ async def delete_event(ctx, event_id: str):
     try:
         # Check if event exists
         if event_id not in event_tracker.events:
+            logger.warning(
+                f"Command 'delete_event' failed: Event ID '{event_id}' not found. (User: {ctx.author})"
+            )
             await ctx.send(f"❌ Event with ID `{event_id}` not found.")
             return
 
@@ -1214,7 +1242,7 @@ async def delete_event(ctx, event_id: str):
                             # Message already deleted, that's okay
                             pass
                         except Exception as e:
-                            print(
+                            logger.warning(
                                 f"Warning: Could not delete Discord message for event {event_id}: {e}"
                             )
 
@@ -1231,13 +1259,13 @@ async def delete_event(ctx, event_id: str):
                     await ctx.send(embed=success_embed)
 
                     # Log the deletion
-                    print(
+                    logger.info(
                         f"🗑️ Event deleted: {event['name']} (ID: {event_id}) by {ctx.author.name} ({ctx.author.id})"
                     )
 
                 except Exception as e:
+                    logger.error(f"Error deleting event {event_id}: {e}")
                     await ctx.send(f"❌ An error occurred while deleting the event: {str(e)}")
-                    print(f"Error deleting event {event_id}: {e}")
 
             elif str(reaction.emoji) == "❌":
                 # User cancelled deletion
@@ -1248,7 +1276,7 @@ async def delete_event(ctx, event_id: str):
 
     except Exception as e:
         await ctx.send(f"❌ An error occurred: {str(e)}")
-        print(f"Error in delete_event command: {e}")
+        logger.error(f"Error in delete_event command: {e}")
 
 
 # Error handler for delete_event command
@@ -1264,7 +1292,7 @@ async def delete_event_error(ctx, error):
         await ctx.send(error_message)
     else:
         await ctx.send("An unexpected error occurred. Please tell Waffle or Beetle.")
-        print(f"An unhandled error in delete_event occurred: {error}")
+        logger.error(f"An unhandled error in delete_event occurred: {error}")
 
 
 @bot.command(name='missing', aliases=['whoismissing'])
@@ -1285,7 +1313,7 @@ async def missing(ctx, event_id1: str = None, event_id2: str = None):
             events = list(event_tracker.events.values())
             if len(events) < 2:
                 await ctx.send(
-                    "❌ Need at least 2 events to compare. Only found {len(events)} event(s)."
+                    f"❌ Need at least 2 events to compare. Only found {len(events)} event(s)."
                 )
                 return
 
@@ -1388,13 +1416,13 @@ async def missing(ctx, event_id1: str = None, event_id2: str = None):
             )
             await ctx.send(embed=embed)
 
-        print(
+        logger.info(
             f"Missing command used by {ctx.author.name}: {len(missing_users)} users missing from {event1_name} who attended {event2_name}"
         )
 
     except Exception as e:
+        logger.error(f"Error in missing command: {e}")
         await ctx.send(f"❌ An error occurred while checking missing users: {str(e)}")
-        print(f"Error in missing command: {e}")
 
 
 @missing.error
@@ -1413,7 +1441,7 @@ async def missing_error(ctx, error):
         await ctx.send(error_message)
     else:
         await ctx.send("An unexpected error occurred. Please tell Waffle or Beetle.")
-        print(f"An unhandled error in missing command occurred: {error}")
+        logger.error(f"An unhandled error in missing command occurred: {error}")
 
 
 @bot.command(name='rename', aliases=['rename_event'])
@@ -1426,6 +1454,9 @@ async def rename_event(ctx, event_id: str, *, new_name: str):
     try:
         # Check if event exists
         if event_id not in event_tracker.events:
+            logger.warning(
+                f"Command 'rename_event' failed: Event ID '{event_id}' not found. (User: {ctx.author})"
+            )
             await ctx.send(f"❌ Event with ID `{event_id}` not found.")
             return
 
@@ -1493,7 +1524,7 @@ async def rename_event(ctx, event_id: str, *, new_name: str):
             await ctx.send(embed=success_embed)
 
             # Log the rename
-            print(
+            logger.info(
                 f"🔄 Event renamed: {old_name} → {new_name} (ID: {event_id}) by {ctx.author.name} ({ctx.author.id})"
             )
 
@@ -1501,14 +1532,14 @@ async def rename_event(ctx, event_id: str, *, new_name: str):
             await ctx.send(
                 "❌ The original event message was not found. The event data has been updated in memory, but the Discord message could not be updated."
             )
-            print(f"⚠️ Event message not found for rename: {event_id}")
+            logger.warning(f"⚠️ Event message not found for rename: {event_id}")
         except Exception as e:
+            logger.error(f"Error updating Discord message for rename: {e}")
             await ctx.send(f"❌ An error occurred while updating the Discord message: {str(e)}")
-            print(f"Error updating Discord message for rename: {e}")
 
     except Exception as e:
+        logger.error(f"Error in rename_event command: {e}")
         await ctx.send(f"❌ An error occurred while renaming the event: {str(e)}")
-        print(f"Error in rename_event command: {e}")
 
 
 @rename_event.error
@@ -1523,7 +1554,7 @@ async def rename_event_error(ctx, error):
         await ctx.send(error_message)
     else:
         await ctx.send("An unexpected error occurred. Please tell Waffle or Beetle.")
-        print(f"An unhandled error in rename_event occurred: {error}")
+        logger.error(f"An unhandled error in rename_event occurred: {error}")
 
 
 @bot.command(name='help_events')
