@@ -362,6 +362,28 @@ class EventTracker:
 
         return summary
 
+    def generate_raw_data_summary(self, events: List[Dict]) -> str:
+        """Generate raw attendance data for events for the !data command"""
+        if not events:
+            return "No events found"
+
+        lines = []
+        for event in events:
+            # We need the attendance with scores
+            weighted_scores = calculate_event_weighted_scores(event)
+
+            # Format: [event_id] Event Name (multiplier): User1 (score), User2 (score)
+            attendees = []
+            for user_name, score in weighted_scores.items():
+                score_str = f"{score:.2f}".rstrip('0').rstrip('.')
+                attendees.append(f"{user_name} ({score_str})")
+
+            multiplier_str = f"{event['multiplier']:.2f}".rstrip('0').rstrip('.')
+            line = f"[{event['id']}] {event['name']} ({multiplier_str}x): {', '.join(attendees)}"
+            lines.append(line)
+
+        return "\n".join(lines)
+
     def calculate_weighted_average(self, events: List[Dict]) -> str:
         """Calculate weighted average of attendees across all events"""
         if not events:
@@ -1052,19 +1074,12 @@ async def on_reaction_remove(reaction, user):
         )
 
 
-@bot.command(name='summary')
-async def summary(ctx, *, args: str = ""):
-    """Generate attendance summary for events
-
-    Usage:
-    !summary EVENT_ID - Summary for a single event
-    !summary ID1 ID2 - Summary for range of events (inclusive)
-    !summary last N - Summary for the last N events
-    !summary YYYY-MM-DD [YYYY-MM-DD] - Summary for date range
-    """
+async def _get_events_from_args(ctx, args: str):
+    """Helper to parse event query arguments for summary and data commands"""
     try:
         events_to_summarize = []
         arg_list = args.split()
+        summary_title = ""
 
         # 1. Handle "last N"
         if len(arg_list) >= 2 and arg_list[0].lower() == "last":
@@ -1073,8 +1088,8 @@ async def summary(ctx, *, args: str = ""):
                 events_to_summarize = event_tracker.get_last_n_events(n)
                 summary_title = f"Last {len(events_to_summarize)} Events"
             except ValueError:
-                await ctx.send("❌ Please provide a number for 'last'. Example: `!summary last 5`.")
-                return
+                await ctx.send("❌ Please provide a number for 'last'. Example: `last 5`.")
+                return None, None
 
         # 2. Handle ID-to-ID or Single ID
         elif len(arg_list) > 0 and "_" in arg_list[0]:
@@ -1089,14 +1104,12 @@ async def summary(ctx, *, args: str = ""):
                     summary_title = f"Single Event: {events_to_summarize[0]['name']}"
                 else:
                     await ctx.send(f"❌ Event ID `{arg_list[0]}` not found.")
-                    return
+                    return None, None
 
         # 3. Handle Timestamps (Legacy/Fallback)
         elif len(arg_list) > 0:
             try:
                 # Attempt to parse as start [end] timestamps
-                # This is greedy and handles spaces/quotes poorly in basic split,
-                # but we'll try to find at least one valid date.
                 start_dt = parse_timestamp(arg_list[0])
                 start_ts = start_dt.timestamp()
 
@@ -1115,13 +1128,36 @@ async def summary(ctx, *, args: str = ""):
                 )
 
             except ValueError:
-                await ctx.send("❌ Could not parse input. Use `!summary help` for usage info.")
-                return
+                await ctx.send("❌ Could not parse input. Use `help` for usage info.")
+                return None, None
 
         else:
             # No args - default to last event
             events_to_summarize = event_tracker.get_last_n_events(1)
             summary_title = "Latest Event"
+
+        return events_to_summarize, summary_title
+
+    except Exception as e:
+        logger.error(f"Error parsing event args: {e}")
+        return None, None
+
+
+@bot.command(name='summary')
+async def summary(ctx, *, args: str = ""):
+    """Generate attendance summary for events
+
+    Usage:
+    !summary EVENT_ID - Summary for a single event
+    !summary ID1 ID2 - Summary for range of events (inclusive)
+    !summary last N - Summary for the last N events
+    !summary YYYY-MM-DD [YYYY-MM-DD] - Summary for date range
+    """
+    try:
+        events_to_summarize, summary_title = await _get_events_from_args(ctx, args)
+
+        if events_to_summarize is None:
+            return
 
         if not events_to_summarize:
             await ctx.send("❌ No events found for the specified criteria.")
@@ -1177,6 +1213,42 @@ async def summary(ctx, *, args: str = ""):
     except Exception as e:
         await ctx.send(f"❌ An error occurred: {str(e)}")
         logger.error(f"Error in summary command: {e}")
+
+
+@bot.command(name='data')
+async def data_command(ctx, *, args: str = ""):
+    """Generate raw attendance data for events
+
+    Usage:
+    !data EVENT_ID - Raw data for a single event
+    !data ID1 ID2 - Raw data for range of events (inclusive)
+    !data last N - Raw data for the last N events
+    !data YYYY-MM-DD [YYYY-MM-DD] - Raw data for date range
+    """
+    try:
+        events_to_summarize, summary_title = await _get_events_from_args(ctx, args)
+
+        if events_to_summarize is None:
+            return
+
+        if not events_to_summarize:
+            await ctx.send("❌ No events found for the specified criteria.")
+            return
+
+        # Generate raw data
+        raw_output = event_tracker.generate_raw_data_summary(events_to_summarize)
+
+        # Send output
+        if len(raw_output) > 2000:
+            chunks = [raw_output[i : i + 1900] for i in range(0, len(raw_output), 1900)]
+            for chunk in chunks:
+                await ctx.send(f"```\n{chunk}\n```")
+        else:
+            await ctx.send(f"```\n{raw_output}\n```")
+
+    except Exception as e:
+        await ctx.send(f"❌ An error occurred: {str(e)}")
+        logger.error(f"Error in data command: {e}")
 
 
 @bot.command(name='delete_event')
@@ -1579,6 +1651,12 @@ async def help_events(ctx):
     embed.add_field(
         name="📊 Generate Summary",
         value=f"`{BOT_PREFIX}summary ID1 ID2` - Summary for range of events (inclusive)\n`{BOT_PREFIX}summary EVENT_ID` - Detailed summary for single event\n`{BOT_PREFIX}summary last N` - Summary for the last N events\n`{BOT_PREFIX}summary YYYY-MM-DD` - Summary for a specific date\n\n**Examples:**\n• `{BOT_PREFIX}summary last 5` (Summary of last 5 runs)\n• `{BOT_PREFIX}summary 123_456 123_789` (ID range summary)\n• `{BOT_PREFIX}summary 2024-01-01` (Everything from Jan 1 onwards)\n\nThis command identifies exactly which events are included in the output header for verification.",
+        inline=False,
+    )
+
+    embed.add_field(
+        name="🔢 Raw Data",
+        value=f"`{BOT_PREFIX}data last N` - Raw attendance data with participation weights\n`{BOT_PREFIX}data ID1 ID2` - Raw data for range of events\n\n**Example:**\n• `{BOT_PREFIX}data last 3` (Raw data for the last 3 events)\n\nFormat: `[event_id] Name (multiplier): User (score), ...`",
         inline=False,
     )
 
