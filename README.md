@@ -89,6 +89,16 @@ The new summary command is context-aware and accepts multiple formats:
 - **`!summary <event_id>`**: Provides a detailed summary for a single specific event.
 - **`!summary 2024-01-15`**: (Fallback) Summarizes events starting from a specific date.
 
+### The Raw Data Command: `!data`
+
+The `!data` command is designed for data extraction, providing raw attendance info with participation weights. It supports the same flexible arguments as `!summary`.
+
+- **`!data last 5`**: Raw data for the 5 most recent events.
+- **`!data <id1> <id2>`**: Raw data for events between two IDs.
+
+**Output Format:**
+`[event_id] Event Name (multiplier): User1 (score), User2 (score), ...`
+
 ### Administrative Tools
 - **`!add_users <id> <multiplier> @user...`**: Manually add attendees with a specific weight (1.0, 0.75, 0.5, 0.25).
 - **`!rename <id> <new_name>`**: Updates the event name in memory and on the original Discord message.
