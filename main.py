@@ -519,14 +519,13 @@ class EventTracker:
             # Get event type from emoji
             event_type = EVENT_TYPE_MAP.get(event.get('type_emoji', ''), 'unknown')
 
-            # Format: [event_id] Event Name (type) (multiplier): User1 (score), User2 (score)
+            # Format: [event_id] [event_type] Event Name: User1 (score), User2 (score)
             attendees = []
             for user_name, score in weighted_scores.items():
                 score_str = f"{score:.2f}".rstrip('0').rstrip('.')
                 attendees.append(f"{user_name} ({score_str})")
 
-            multiplier_str = f"{event['multiplier']:.2f}".rstrip('0').rstrip('.')
-            line = f"[{event['id']}] {event['name']} ({event_type}) ({multiplier_str}x): {', '.join(attendees)}"
+            line = f"[{event['id']}] [{event_type}] {event['name']}: {', '.join(attendees)}"
             event_strings.append(line)
 
         return event_strings
@@ -1915,7 +1914,7 @@ async def help_events(ctx):
 
     embed.add_field(
         name="🔢 Raw Data",
-        value=f"`{BOT_PREFIX}data last N` - Raw attendance data with participation weights\n`{BOT_PREFIX}data ID1 ID2` - Raw data for range of events\n\n**Example:**\n• `{BOT_PREFIX}data last 3` (Raw data for the last 3 events)\n\nFormat: `[event_id] Name (type) (multiplier): User (score), ...`",
+        value=f"`{BOT_PREFIX}data last N` - Raw attendance data with participation weights\n`{BOT_PREFIX}data ID1 ID2` - Raw data for range of events\n\n**Example:**\n• `{BOT_PREFIX}data last 3` (Raw data for the last 3 events)\n\nFormat: `[event_id] [type] Name: User (score), ...`",
         inline=False,
     )
 

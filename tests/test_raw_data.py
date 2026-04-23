@@ -24,9 +24,9 @@ def test_generate_raw_data_summary():
     events = [tracker.events[event_id]]
     raw_output = tracker.generate_raw_data_summary(events)
 
-    # Expected format: [event_id] Event Name (type) (multiplier): User1 (score), User2 (score)
+    # Expected format: [event_id] [type] Event Name: User1 (score), User2 (score)
     # type_emoji is empty, so it should be "unknown"
-    expected_line = "[test_event_123] WW Darkmire Contested (unknown) (1.5x): pixelpegasus (1.5), micmatty (1.12), bloodsworn. (0.75)"
+    expected_line = "[test_event_123] [unknown] WW Darkmire Contested: pixelpegasus (1.5), micmatty (1.12), bloodsworn. (0.75)"
     assert raw_output == [expected_line]
 
 
@@ -51,7 +51,7 @@ def test_generate_raw_data_summary_with_type():
     events = [tracker.events[event_id]]
     raw_output = tracker.generate_raw_data_summary(events)
 
-    expected_line = "[test_event_type] Dungeon Run (dungeon) (1x): user1 (1)"
+    expected_line = "[test_event_type] [dungeon] Dungeon Run: user1 (1)"
     assert raw_output == [expected_line]
 
 
@@ -76,6 +76,6 @@ def test_generate_raw_data_summary_manual_attendance():
     events = [tracker.events[event_id]]
     raw_output = tracker.generate_raw_data_summary(events)
 
-    # Expected: [test_event_456] Boss Fight (unknown) (2x): manual_user (0.5)
-    expected_line = "[test_event_456] Boss Fight (unknown) (2x): manual_user (0.5)"
+    # Expected: [test_event_456] [unknown] Boss Fight: manual_user (0.5)
+    expected_line = "[test_event_456] [unknown] Boss Fight: manual_user (0.5)"
     assert raw_output == [expected_line]
