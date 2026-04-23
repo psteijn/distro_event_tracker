@@ -227,6 +227,51 @@ def generate_single_event_summary(event: Dict) -> discord.Embed:
     return embed
 
 
+def update_embed_manual_attendance(embed: discord.Embed, manual_attendance: List[Dict]) -> discord.Embed:
+    """Shared helper to update the Manual Attendance field in an event embed"""
+    if not manual_attendance:
+        return embed
+
+    # Create the manual attendance display string with emojis
+    manual_attendance_display = []
+    for user_data in manual_attendance:
+        if isinstance(user_data, dict):
+            # New format with emoji based on multiplier
+            emoji_string = multiplier_to_emoji_string(user_data['multiplier'])
+            manual_attendance_display.append(f"{emoji_string} {user_data['name']}")
+        else:
+            # Old format safety check
+            manual_attendance_display.append(str(user_data))
+
+    field_value = ', '.join(manual_attendance_display)
+
+    # Truncate if it exceeds Discord's field limit (1024 chars)
+    if len(field_value) > 1024:
+        field_value = field_value[:1021] + "..."
+
+    found_existing_field = False
+    for index, field in enumerate(embed.fields):
+        if field.name == "Manual Attendance":
+            # Replace the field with updated manual attendance
+            embed.set_field_at(
+                index,
+                name=field.name,
+                value=field_value,
+                inline=field.inline,
+            )
+            found_existing_field = True
+            break
+
+    if not found_existing_field:
+        embed.add_field(
+            name="Manual Attendance",
+            value=field_value,
+            inline=True,
+        )
+
+    return embed
+
+
 def calculate_event_weighted_scores(event: Dict) -> Dict[str, float]:
     """Calculate weighted scores for attendees of a single event"""
     user_scores = {}
@@ -779,6 +824,55 @@ class EventTracker:
             logger.warning(f"⚠️ Error fetching users for reaction {emoji_str}: {e}")
             return (emoji_str, [])
 
+    async def get_attendance_from_reactions(self, message) -> List[Dict]:
+        """Fetch reactions from a message and return them as manual attendance records"""
+        imported = []
+        # Map emoji names to multipliers
+        valid_emojis = {
+            EMOJI_HUNDRED: 1.0,
+            EMOJI_SEVENTY_FIVE: 0.75,
+            EMOJI_FIFTY: 0.5,
+            EMOJI_TWENTY_FIVE: 0.25
+        }
+
+        # Parallel fetch similar to _process_reactions_for_event
+        tasks = []
+        for reaction in message.reactions:
+            emoji_str = str(reaction.emoji)
+
+            # Extract emoji name if it's a custom emoji
+            emoji_name = None
+            if emoji_str.startswith('<:') and emoji_str.endswith('>'):
+                emoji_name = emoji_str.split(':')[1]
+            else:
+                emoji_name = emoji_str
+
+            if emoji_name in valid_emojis:
+                tasks.append(self._fetch_reaction_users(reaction, emoji_name))
+
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    continue
+
+                emoji_name, users = result
+                # Get the name again because _fetch_reaction_users returns the full emoji_str
+                actual_name = emoji_name.split(':')[1] if emoji_name.startswith('<:') else emoji_name
+                mult = valid_emojis.get(actual_name, 1.0)
+
+                for user in users:
+                    if user.bot:
+                        continue
+
+                    # Add to imported list, avoiding duplicates (keep highest multiplier)
+                    existing = next((item for item in imported if item['name'] == user.name), None)
+                    if existing:
+                        existing['multiplier'] = max(existing['multiplier'], mult)
+                    else:
+                        imported.append({'name': user.name, 'multiplier': mult})
+        return imported
+
 
 # Initialize event tracker
 event_tracker = EventTracker()
@@ -1061,35 +1155,8 @@ async def add_users(ctx, event_id: str, multiplier: float, *members: discord.Mem
             # Create updated embed
             embed = event_message.embeds[0]
 
-            # Create the manual attendance display string with emojis
-            manual_attendance_display = []
-            for user_data in event['manual_attendance']:
-                if isinstance(user_data, dict):
-                    # New format with emoji based on multiplier
-                    emoji_string = multiplier_to_emoji_string(user_data['multiplier'])
-                    manual_attendance_display.append(f"{emoji_string} {user_data['name']}")
-                else:
-                    # Old format (shouldn't happen after conversion, but safety check)
-                    manual_attendance_display.append(str(user_data))
-
-            found_existing_field = False
-            for index, field in enumerate(embed.fields):
-                if field.name == "Manual Attendance":
-                    # Replace the field with updated manual attendance
-                    embed.set_field_at(
-                        index,
-                        name=field.name,
-                        value=', '.join(manual_attendance_display),
-                        inline=field.inline,
-                    )
-                    found_existing_field = True
-                    break
-            if not found_existing_field:
-                embed.add_field(
-                    name="Manual Attendance",
-                    value=', '.join(manual_attendance_display),
-                    inline=True,
-                )
+            # Update the manual attendance field using the shared helper
+            embed = update_embed_manual_attendance(embed, event['manual_attendance'])
 
             # Update the embed
             await event_message.edit(embed=embed)
@@ -1668,8 +1735,9 @@ async def backfill(ctx, event_type: str, message_id: int):
             is_historical=True,
         )
 
-        # 4. Import attendance from reactions
-        await event_tracker._process_reactions_for_event(event, target_message)
+        # 4. Import attendance from reactions as manual attendance
+        imported_attendance = await event_tracker.get_attendance_from_reactions(target_message)
+        event['manual_attendance'] = imported_attendance
 
         # 5. Send the bot's standard event message for the backfill
         embed = discord.Embed(
@@ -1684,6 +1752,9 @@ async def backfill(ctx, event_type: str, message_id: int):
 
         # Add original timestamp to embed
         embed.timestamp = created_time
+
+        # Add manual attendance to embed for transparency
+        embed = update_embed_manual_attendance(embed, imported_attendance)
 
         event_message = await ctx.send(embed=embed)
 
