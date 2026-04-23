@@ -54,13 +54,7 @@ twenty_five_emoji = None
 
 
 # Event type mapping for raw data output
-EVENT_TYPE_MAP = {
-    "🏰": "dungeon",
-    "⚔️": "mini",
-    "🗺️": "t8",
-    "👹": "main",
-    "👑": "omni"
-}
+EVENT_TYPE_MAP = {"🏰": "dungeon", "⚔️": "mini", "🗺️": "t8", "👹": "main", "👑": "omni"}
 
 
 # Mapping for backfill command
@@ -227,7 +221,9 @@ def generate_single_event_summary(event: Dict) -> discord.Embed:
     return embed
 
 
-def update_embed_manual_attendance(embed: discord.Embed, manual_attendance: List[Dict]) -> discord.Embed:
+def update_embed_manual_attendance(
+    embed: discord.Embed, manual_attendance: List[Dict]
+) -> discord.Embed:
     """Shared helper to update the Manual Attendance field in an event embed"""
     if not manual_attendance:
         return embed
@@ -831,7 +827,7 @@ class EventTracker:
             EMOJI_HUNDRED: 1.0,
             EMOJI_SEVENTY_FIVE: 0.75,
             EMOJI_FIFTY: 0.5,
-            EMOJI_TWENTY_FIVE: 0.25
+            EMOJI_TWENTY_FIVE: 0.25,
         }
 
         # Parallel fetch similar to _process_reactions_for_event
@@ -857,7 +853,9 @@ class EventTracker:
 
                 emoji_name, users = result
                 # Get the name again because _fetch_reaction_users returns the full emoji_str
-                actual_name = emoji_name.split(':')[1] if emoji_name.startswith('<:') else emoji_name
+                actual_name = (
+                    emoji_name.split(':')[1] if emoji_name.startswith('<:') else emoji_name
+                )
                 mult = valid_emojis.get(actual_name, 1.0)
 
                 for user in users:

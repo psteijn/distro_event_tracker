@@ -1,5 +1,4 @@
 import pytest
-import discord
 from datetime import datetime, timezone
 import pytz
 import asyncio
@@ -9,6 +8,7 @@ from main import backfill, event_tracker
 from tests.utils_discord_mocks import DummyCtx, DummyAuthor, FakeMessage
 
 PACIFIC_TZ = pytz.timezone("US/Pacific")
+
 
 class AsyncIterator:
     def __init__(self, items):
@@ -26,6 +26,7 @@ class AsyncIterator:
         else:
             raise StopAsyncIteration
 
+
 class FakeReaction:
     def __init__(self, emoji, users):
         self.emoji = emoji
@@ -33,6 +34,7 @@ class FakeReaction:
 
     def users(self):
         return AsyncIterator(self._users)
+
 
 class FakeBackfillMessage:
     def __init__(self, message_id, content, author, created_at, reactions):
@@ -45,6 +47,7 @@ class FakeBackfillMessage:
 
     async def add_reaction(self, emoji):
         self.added_reactions.append(emoji)
+
 
 @pytest.mark.asyncio
 async def test_backfill_creates_event_from_message(monkeypatch):
@@ -75,28 +78,43 @@ async def test_backfill_creates_event_from_message(monkeypatch):
 
     reactions = [
         FakeReaction("<:share_100:1234>", [user1, bot_user]),
-        FakeReaction("<:share_50:5678>", [user2])
+        FakeReaction("<:share_50:5678>", [user2]),
     ]
 
-    target_message = FakeBackfillMessage(987654321, "Test Backfill Event", target_author, created_at, reactions)
+    target_message = FakeBackfillMessage(
+        987654321, "Test Backfill Event", target_author, created_at, reactions
+    )
 
     ctx = DummyCtx()
+
     # Mock send to return a message with an id
     async def fake_send(*args, **kwargs):
         msg = FakeMessage()
         msg.id = 555
         # Also record it in ctx.sent for the other test
-        ctx.sent.append({"msg": args[0] if args else kwargs.get("content"), "embed": kwargs.get("embed")})
+        ctx.sent.append(
+            {"msg": args[0] if args else kwargs.get("content"), "embed": kwargs.get("embed")}
+        )
         return msg
+
     ctx.send = fake_send
 
-    ctx.channel = type("Channel", (), {
-        "id": 888,
-        "fetch_message": lambda mid: asyncio.ensure_future(asyncio.sleep(0)).add_done_callback(lambda x: target_message) or target_message
-    })()
+    ctx.channel = type(
+        "Channel",
+        (),
+        {
+            "id": 888,
+            "fetch_message": lambda mid: asyncio.ensure_future(asyncio.sleep(0)).add_done_callback(
+                lambda x: target_message
+            )
+            or target_message,
+        },
+    )()
+
     # async fetch_message mock
     async def fake_fetch_message(mid):
         return target_message
+
     ctx.channel.fetch_message = fake_fetch_message
 
     ctx.message = type("Message", (), {"id": 111, "created_at": datetime.now(timezone.utc)})()
@@ -125,6 +143,7 @@ async def test_backfill_creates_event_from_message(monkeypatch):
     # In the code, event_message is the one that gets reactions
     # We returned target_message from ctx.send in a real scenario, but here ctx.send returns None by default in DummyCtx
     # I should update DummyCtx to return a FakeMessage
+
 
 @pytest.mark.asyncio
 async def test_backfill_invalid_type(ctx=None):
