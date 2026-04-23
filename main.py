@@ -63,6 +63,20 @@ EVENT_TYPE_MAP = {
 }
 
 
+# Mapping for backfill command
+BACKFILL_TYPE_MAP = {
+    "dungeon": ("🏰", 1.0, discord.Color.blue()),
+    "mini": ("⚔️", 1.0, discord.Color.orange()),
+    "miniboss": ("⚔️", 1.0, discord.Color.orange()),
+    "boss": ("👹", 2.0, discord.Color.red()),
+    "main": ("👹", 2.0, discord.Color.red()),
+    "mainboss": ("👹", 2.0, discord.Color.red()),
+    "t8": ("🗺️", 1.0, discord.Color.green()),
+    "omni": ("👑", 8.0, discord.Color.purple()),
+    "omniboss": ("👑", 8.0, discord.Color.purple()),
+}
+
+
 async def send_long_message(ctx, content: Union[str, List[str]], code_block: bool = True):
     """
     Sends long content by splitting it into chunks of up to 2000 characters.
@@ -1600,6 +1614,100 @@ async def missing_error(ctx, error):
         logger.error(f"An unhandled error in missing command occurred: {error}")
 
 
+@bot.command(name='backfill')
+async def backfill(ctx, event_type: str, message_id: int):
+    """Recover an event from a non-bot message with reactions.
+
+    Usage: !backfill <event_type> <message_id>
+    event_type: dungeon, mini, boss, t8, omni
+    """
+    try:
+        # 1. Validate event_type
+        event_type = event_type.lower()
+        if event_type not in BACKFILL_TYPE_MAP:
+            valid_types = ", ".join(BACKFILL_TYPE_MAP.keys())
+            await ctx.send(f"❌ Invalid event type `{event_type}`. Valid types: {valid_types}")
+            return
+
+        emoji, multiplier, color = BACKFILL_TYPE_MAP[event_type]
+
+        # 2. Fetch the original message
+        try:
+            target_message = await ctx.channel.fetch_message(message_id)
+        except discord.NotFound:
+            await ctx.send(f"❌ Message with ID `{message_id}` not found in this channel.")
+            return
+        except Exception as e:
+            await ctx.send(f"❌ Error fetching message: {str(e)}")
+            return
+
+        event_name = (
+            target_message.content if target_message.content else f"Backfilled {event_type} Event"
+        )
+
+        # 3. Create the event entry in the tracker
+        # We use the target message's creation time for the event
+        created_time = target_message.created_at.astimezone(PACIFIC_TZ)
+        # Use a unique ID based on the target message
+        event_id = f"bf_{target_message.id}_{int(created_time.timestamp())}"
+
+        # Check if already exists
+        if event_id in event_tracker.events:
+            await ctx.send(f"⚠️ Event with ID `{event_id}` already exists in the tracker.")
+            return
+
+        event = event_tracker.create_event(
+            event_id=event_id,
+            name=event_name,
+            type_emoji=emoji,
+            channel_id=ctx.channel.id,
+            message_id=target_message.id,  # We'll update this to the bot's message ID soon
+            creator_id=target_message.author.id,
+            created_at=created_time.timestamp(),
+            multiplier=multiplier,
+            is_historical=True,
+        )
+
+        # 4. Import attendance from reactions
+        await event_tracker._process_reactions_for_event(event, target_message)
+
+        # 5. Send the bot's standard event message for the backfill
+        embed = discord.Embed(
+            title=f"{emoji} {event_name} (Backfilled)",
+            description=f"This event was backfilled from message ID `{message_id}`.\nReact below if you missed it on the original message!",
+            color=color,
+        )
+        embed.add_field(name="Original Creator", value=target_message.author.mention, inline=True)
+        embed.add_field(name="Backfilled by", value=ctx.author.mention, inline=True)
+        embed.add_field(name="📊Summary", value=f"`!summary {event_id}`", inline=True)
+        embed.set_footer(text=f"Event ID: {event_id}")
+
+        # Add original timestamp to embed
+        embed.timestamp = created_time
+
+        event_message = await ctx.send(embed=embed)
+
+        # Update the event with the bot message ID
+        event['message_id'] = event_message.id
+        event_tracker.events[event_id]['message_id'] = event_message.id
+
+        # Add standard reactions to the bot message
+        await event_message.add_reaction(hundred_emoji)
+        await event_message.add_reaction(seventy_five_emoji)
+        await event_message.add_reaction(fifty_emoji)
+        await event_message.add_reaction(twenty_five_emoji)
+
+        attendee_count = len(event['attendance'])
+        await ctx.send(
+            f"✅ Successfully backfilled event **{event_name}** with {attendee_count} attendees!"
+        )
+        logger.info(f"Event backfilled: {event_name} (ID: {event_id}) by {ctx.author.name}")
+
+    except Exception as e:
+        await ctx.send(f"❌ An error occurred: {str(e)}")
+        logger.error(f"Error in backfill command: {e}")
+
+
 @bot.command(name='rename', aliases=['rename_event'])
 async def rename_event(ctx, event_id: str, *, new_name: str):
     """Rename an event (only the event creator can rename their own events)
@@ -1761,6 +1869,12 @@ async def help_events(ctx):
     embed.add_field(
         name="🔄 Rename Event",
         value=f"`{BOT_PREFIX}rename EVENT_ID NEW_NAME`\nRename an event (only the event creator can rename their own events)\n\n**Examples:**\n• `{BOT_PREFIX}rename 1234567890_1234567890 \"Updated Event Name\"`\n• `{BOT_PREFIX}rename_event 1234567890_1234567890 \"New Name\"`\n\nUpdates both the Discord message and the event data in memory.",
+        inline=False,
+    )
+
+    embed.add_field(
+        name="🔙 Backfill Event",
+        value=f"`{BOT_PREFIX}backfill <type> <message_id>`\nRecover an event from a non-bot message with reactions. The message text becomes the event name.\n\n**Types:** dungeon, mini, boss, t8, omni\n**Example:** `{BOT_PREFIX}backfill boss 123456789012345678`",
         inline=False,
     )
 
