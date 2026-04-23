@@ -6,7 +6,7 @@ from datetime import datetime
 import os
 import logging
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 import pytz
 from config import (
     DISCORD_TOKEN,
@@ -51,6 +51,91 @@ hundred_emoji = None
 seventy_five_emoji = None
 fifty_emoji = None
 twenty_five_emoji = None
+
+
+# Event type mapping for raw data output
+EVENT_TYPE_MAP = {
+    "🏰": "dungeon",
+    "⚔️": "mini",
+    "🗺️": "t8",
+    "👹": "main",
+    "👑": "omni"
+}
+
+
+async def send_long_message(ctx, content: Union[str, List[str]], code_block: bool = True):
+    """
+    Sends long content by splitting it into chunks of up to 2000 characters.
+    If 'content' is a list, it treats each item as an unbreakable block (whenever possible)
+    to ensure splits happen between entire events/records.
+    """
+    if not content:
+        return
+
+    # Discord limit is 2000, but we use a smaller limit to account for code blocks (```\n...\n```)
+    limit = 1900
+
+    # Convert single string to list of lines if needed
+    if isinstance(content, str):
+        blocks = content.split('\n')
+    else:
+        blocks = content
+
+    current_chunk = ""
+
+    for block in blocks:
+        # If adding this block (plus a newline) would exceed the limit
+        if len(current_chunk) + len(block) + 1 > limit:
+            # If current_chunk is not empty, send it
+            if current_chunk:
+                msg_content = f"```\n{current_chunk}\n```" if code_block else current_chunk
+                await ctx.send(msg_content)
+                current_chunk = ""
+
+            # If the single block is still too long, we MUST split it
+            if len(block) > limit:
+                # For blocks > limit, we attempt to split at comma to be helpful
+                parts = block.split(', ')
+                for part in parts:
+                    if len(current_chunk) + len(part) + 2 > limit:
+                        if current_chunk:
+                            msg_content = (
+                                f"```\n{current_chunk}\n```" if code_block else current_chunk
+                            )
+                            await ctx.send(msg_content)
+                            current_chunk = ""
+
+                        # Hard chop extreme case (if even a single part is > limit)
+                        if len(part) > limit:
+                            for i in range(0, len(part), limit):
+                                sub_part = part[i : i + limit]
+                                await ctx.send(f"```\n{sub_part}\n```" if code_block else sub_part)
+                            continue
+
+                        current_chunk = part
+                    else:
+                        if current_chunk:
+                            current_chunk += ", " + part
+                        else:
+                            current_chunk = part
+
+                # After processing long block parts, send whatever is left
+                if current_chunk:
+                    msg_content = f"```\n{current_chunk}\n```" if code_block else current_chunk
+                    await ctx.send(msg_content)
+                    current_chunk = ""
+                continue
+
+        # Normal block processing
+        if current_chunk:
+            current_chunk += "\n" + block
+        else:
+            current_chunk = block
+
+    # Send final chunk
+    if current_chunk:
+        msg_content = f"```\n{current_chunk}\n```" if code_block else current_chunk
+        await ctx.send(msg_content)
 
 
 def generate_single_event_summary(event: Dict) -> discord.Embed:
@@ -362,27 +447,30 @@ class EventTracker:
 
         return summary
 
-    def generate_raw_data_summary(self, events: List[Dict]) -> str:
+    def generate_raw_data_summary(self, events: List[Dict]) -> List[str]:
         """Generate raw attendance data for events for the !data command"""
         if not events:
-            return "No events found"
+            return ["No events found"]
 
-        lines = []
+        event_strings = []
         for event in events:
             # We need the attendance with scores
             weighted_scores = calculate_event_weighted_scores(event)
 
-            # Format: [event_id] Event Name (multiplier): User1 (score), User2 (score)
+            # Get event type from emoji
+            event_type = EVENT_TYPE_MAP.get(event.get('type_emoji', ''), 'unknown')
+
+            # Format: [event_id] Event Name (type) (multiplier): User1 (score), User2 (score)
             attendees = []
             for user_name, score in weighted_scores.items():
                 score_str = f"{score:.2f}".rstrip('0').rstrip('.')
                 attendees.append(f"{user_name} ({score_str})")
 
             multiplier_str = f"{event['multiplier']:.2f}".rstrip('0').rstrip('.')
-            line = f"[{event['id']}] {event['name']} ({multiplier_str}x): {', '.join(attendees)}"
-            lines.append(line)
+            line = f"[{event['id']}] {event['name']} ({event_type}) ({multiplier_str}x): {', '.join(attendees)}"
+            event_strings.append(line)
 
-        return "\n".join(lines)
+        return event_strings
 
     def calculate_weighted_average(self, events: List[Dict]) -> str:
         """Calculate weighted average of attendees across all events"""
@@ -1170,12 +1258,14 @@ async def summary(ctx, *, args: str = ""):
         first_event = events_to_summarize[0]
         last_event = events_to_summarize[-1]
 
-        text_output = "📊 Event Attendance Summary\n"
-        text_output += f"Context: {summary_title}\n"
-        text_output += f"Range: {first_event['name']} -> {last_event['name']}\n"
-        text_output += f"Total Events: {len(events_to_summarize)}\n\n"
+        output_blocks = []
+        header = "📊 Event Attendance Summary\n"
+        header += f"Context: {summary_title}\n"
+        header += f"Range: {first_event['name']} -> {last_event['name']}\n"
+        header += f"Total Events: {len(events_to_summarize)}\n"
+        output_blocks.append(header)
 
-        # Add event details
+        # Add event details as separate blocks
         for event in summary_data['events']:
             attendees_list = []
             for user_id, (user_name, emojis) in event['attendance_by_user'].items():
@@ -1190,25 +1280,20 @@ async def summary(ctx, *, args: str = ""):
             line_header = f"{prefix}{event['name']} ({time_str})"
 
             if attendees_list:
-                text_output += f"{line_header}: {', '.join(attendees_list)}\n"
+                output_blocks.append(f"{line_header}: {', '.join(attendees_list)}")
             else:
-                text_output += f"{line_header}: (no attendees)\n"
+                output_blocks.append(f"{line_header}: (no attendees)")
 
         # Add event names line for easy auditing
         event_names = [event['name'] for event in summary_data['events']]
-        text_output += f"\n-------\nEvents: {', '.join(event_names)}\n"
+        output_blocks.append(f"\n-------\nEvents: {', '.join(event_names)}")
 
         # Add weighted average summary
         weighted_summary = event_tracker.calculate_weighted_average(summary_data['events'])
-        text_output += f"{weighted_summary}\n"
+        output_blocks.append(weighted_summary)
 
         # Send output
-        if len(text_output) > 2000:
-            chunks = [text_output[i : i + 1900] for i in range(0, len(text_output), 1900)]
-            for chunk in chunks:
-                await ctx.send(f"```\n{chunk}\n```")
-        else:
-            await ctx.send(f"```\n{text_output}\n```")
+        await send_long_message(ctx, output_blocks)
 
     except Exception as e:
         await ctx.send(f"❌ An error occurred: {str(e)}")
@@ -1235,16 +1320,11 @@ async def data_command(ctx, *, args: str = ""):
             await ctx.send("❌ No events found for the specified criteria.")
             return
 
-        # Generate raw data
-        raw_output = event_tracker.generate_raw_data_summary(events_to_summarize)
+        # Generate raw data (returns a list of event strings)
+        raw_output_blocks = event_tracker.generate_raw_data_summary(events_to_summarize)
 
         # Send output
-        if len(raw_output) > 2000:
-            chunks = [raw_output[i : i + 1900] for i in range(0, len(raw_output), 1900)]
-            for chunk in chunks:
-                await ctx.send(f"```\n{chunk}\n```")
-        else:
-            await ctx.send(f"```\n{raw_output}\n```")
+        await send_long_message(ctx, raw_output_blocks)
 
     except Exception as e:
         await ctx.send(f"❌ An error occurred: {str(e)}")
@@ -1656,7 +1736,7 @@ async def help_events(ctx):
 
     embed.add_field(
         name="🔢 Raw Data",
-        value=f"`{BOT_PREFIX}data last N` - Raw attendance data with participation weights\n`{BOT_PREFIX}data ID1 ID2` - Raw data for range of events\n\n**Example:**\n• `{BOT_PREFIX}data last 3` (Raw data for the last 3 events)\n\nFormat: `[event_id] Name (multiplier): User (score), ...`",
+        value=f"`{BOT_PREFIX}data last N` - Raw attendance data with participation weights\n`{BOT_PREFIX}data ID1 ID2` - Raw data for range of events\n\n**Example:**\n• `{BOT_PREFIX}data last 3` (Raw data for the last 3 events)\n\nFormat: `[event_id] Name (type) (multiplier): User (score), ...`",
         inline=False,
     )
 

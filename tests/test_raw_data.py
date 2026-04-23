@@ -24,17 +24,35 @@ def test_generate_raw_data_summary():
     events = [tracker.events[event_id]]
     raw_output = tracker.generate_raw_data_summary(events)
 
-    # Expected format: [event_id] Event Name (multiplier): User1 (score), User2 (score)
-    # Multiplier: 1.5
-    # pixelpegasus: 1.5 * 1.0 = 1.5
-    # micmatty: 1.5 * 0.75 = 1.125 -> 1.13 (approx) or 1.125
-    # bloodsworn.: 1.5 * 0.5 = 0.75
+    # Expected format: [event_id] Event Name (type) (multiplier): User1 (score), User2 (score)
+    # type_emoji is empty, so it should be "unknown"
+    expected_line = "[test_event_123] WW Darkmire Contested (unknown) (1.5x): pixelpegasus (1.5), micmatty (1.12), bloodsworn. (0.75)"
+    assert raw_output == [expected_line]
 
-    # Note: calculate_event_weighted_scores uses f"{score:.2f}".rstrip('0').rstrip('.')
-    # 1.5 * 0.75 = 1.125 -> 1.12 (Python's round half to even)
 
-    expected_line = "[test_event_123] WW Darkmire Contested (1.5x): pixelpegasus (1.5), micmatty (1.12), bloodsworn. (0.75)"
-    assert raw_output == expected_line
+def test_generate_raw_data_summary_with_type():
+    tracker = EventTracker()
+
+    # Create a test event with type emoji
+    event_id = "test_event_type"
+    tracker.create_event(
+        event_id=event_id,
+        name="Dungeon Run",
+        channel_id=1,
+        message_id=1,
+        creator_id=1,
+        created_at=1000.0,
+        multiplier=1.0,
+        type_emoji="🏰",
+    )
+
+    tracker.add_attendance(event_id, 101, "user1", EMOJI_HUNDRED)
+
+    events = [tracker.events[event_id]]
+    raw_output = tracker.generate_raw_data_summary(events)
+
+    expected_line = "[test_event_type] Dungeon Run (dungeon) (1x): user1 (1)"
+    assert raw_output == [expected_line]
 
 
 def test_generate_raw_data_summary_manual_attendance():
@@ -58,6 +76,6 @@ def test_generate_raw_data_summary_manual_attendance():
     events = [tracker.events[event_id]]
     raw_output = tracker.generate_raw_data_summary(events)
 
-    # Expected: [test_event_456] Boss Fight (2x): manual_user (0.5)
-    expected_line = "[test_event_456] Boss Fight (2x): manual_user (0.5)"
-    assert raw_output == expected_line
+    # Expected: [test_event_456] Boss Fight (unknown) (2x): manual_user (0.5)
+    expected_line = "[test_event_456] Boss Fight (unknown) (2x): manual_user (0.5)"
+    assert raw_output == [expected_line]
