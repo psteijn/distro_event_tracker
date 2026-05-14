@@ -38,6 +38,21 @@ These instructions are foundational mandates for all Gemini sessions working in 
 - **Mocking:** Use the `tests/utils_discord_mocks.py` framework. Never attempt to connect to the real Discord API during unit tests.
 - **GitHub:** This repo uses standard feature branching. Do not commit to `main` directly; propose a branch and PR.
 
+## 🔄 Standard Workflow After Changes
+After implementing any feature or fix, follow these steps to ensure quality and successful deployment:
+
+1. **Validate Quality:**
+   - Run `.\lint.bat` (or `./lint.sh`) to ensure code style compliance.
+   - Run `.\run_tests.bat` (or `./run_tests.sh`) to verify all unit tests pass.
+
+2. **Deploy & Verify:**
+   - Run `.\deploy.bat` to restart the Windows Task Scheduler tasks (`DistroEventTracker` and `OceanDistroEventTracker`).
+   - **Check Logs:** Inspect `distro_task_log.txt` and `ocean_distro_task_log.txt` to ensure both bot instances started without errors.
+
+3. **Source Control:**
+   - Once verified, commit the changes with a descriptive message.
+   - Push the changes to the `main` branch (or your feature branch as appropriate) in the GitHub repository.
+
 ## 🏷️ Event Mappings
 Maintain the following emoji-to-type mapping in `EVENT_TYPE_MAP` and `BACKFILL_TYPE_MAP`:
 - 🏰 -> `dungeon` (1x)
