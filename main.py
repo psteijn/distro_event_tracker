@@ -962,6 +962,9 @@ def multiplier_to_emoji_string(multiplier: float) -> str:
 async def on_ready():
     global hundred_emoji, seventy_five_emoji, fifty_emoji, twenty_five_emoji
 
+    # Start timing initialization
+    init_start_time = time.time()
+
     logger.info(f'{bot.user} has connected to Discord!')
     logger.info(f'Bot is in {len(bot.guilds)} guilds')
 
@@ -997,10 +1000,23 @@ async def on_ready():
     except Exception as e:
         logger.error(f"❌ Error loading emojis: {e}")
 
+    init_duration = time.time() - init_start_time
+    logger.info(
+        f"⚡ [Phase 1] Basic initialization complete in {init_duration:.2f}s. Bot is now READY to receive commands."
+    )
+
     # Reconstruct events from message history
     try:
+        recon_start_time = time.time()
         reconstructed_count = await event_tracker.reconstruct_from_history(bot)
-        logger.info(f'🚀 Bot ready! Reconstructed {reconstructed_count} events from history.')
+        recon_duration = time.time() - recon_start_time
+        total_ready_time = time.time() - init_start_time
+        logger.info(
+            f'🚀 [Phase 2] Historical reconstruction complete! Processed {reconstructed_count} events in {recon_duration:.2f}s.'
+        )
+        logger.info(
+            f'🏁 Bot fully initialized and memory reconstructed in {total_ready_time:.2f}s.'
+        )
     except Exception as e:
         logger.error(f'❌ Error during event reconstruction: {e}')
         logger.info('🚀 Bot ready! (Running without historical events)')
