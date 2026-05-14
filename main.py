@@ -606,6 +606,9 @@ class EventTracker:
 
                 event_messages_found += 1
 
+                # Add a small delay between messages to mitigate rate limiting
+                await asyncio.sleep(0.1)
+
                 if await self._process_message_for_events(message, is_historical=True):
                     reconstructed_count += 1
         else:
