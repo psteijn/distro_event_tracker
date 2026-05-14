@@ -41,7 +41,7 @@ PACIFIC_TZ = pytz.timezone('US/Pacific')
 intents = discord.Intents.default()
 intents.message_content = True
 intents.reactions = True
-bot = commands.Bot(command_prefix=BOT_PREFIX, intents=intents)
+bot = commands.Bot(command_prefix=BOT_PREFIX, intents=intents, case_insensitive=True)
 
 # In-memory storage for events (will be replaced with database later)
 events_storage = {}
