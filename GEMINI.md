@@ -47,7 +47,7 @@ After implementing any feature or fix, follow these steps to ensure quality and 
 
 2. **Deploy & Verify:**
    - Run `.\deploy.bat` to restart the Windows Task Scheduler tasks (`DistroEventTracker` and `OceanDistroEventTracker`).
-   - **Check Logs:** Inspect `distro_task_log.txt` and `ocean_distro_task_log.txt` to ensure both bot instances started without errors.
+   - **Check Status (Gemini-Friendly):** Run `python deploy_report.py`. This script provides a high-signal summary of the logs (bot name, emoji status, and last event) to avoid reading raw log files.
 
 3. **Source Control:**
    - Once verified, commit the changes with a descriptive message.
