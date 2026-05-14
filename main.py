@@ -1908,67 +1908,6 @@ async def rename_event_error(ctx, error):
         logger.error(f"An unhandled error in rename_event occurred: {error}")
 
 
-@bot.command(name='ask')
-async def ask(ctx, *, question: str):
-    """Ask Gemini a question about the bot, its rules, or usage.
-
-    The bot will use its project context (GEMINI.md, README.md) to answer.
-    Usage: !ask how do I create a boss event?
-    """
-    if not question.strip():
-        await ctx.send("❌ Please provide a question!")
-        return
-
-    # Indicate the bot is thinking
-    async with ctx.typing():
-        try:
-            # Construct the gemini-cli command
-            # We use --approval-mode=plan for a strict read-only sandbox
-            # We use --skip-trust to avoid interactive prompts
-            # We use --output-format=text for clean output
-            cmd = [
-                "gemini.cmd",
-                "--prompt",
-                question,
-                "--approval-mode",
-                "plan",
-                "--skip-trust",
-                "--output-format",
-                "text",
-            ]
-
-            # Run the command with a timeout to prevent hanging
-            # We run it in the current working directory so it finds GEMINI.md
-            process = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-
-            try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
-
-                if process.returncode == 0:
-                    response = stdout.decode('utf-8').strip()
-                    if not response:
-                        response = "Gemini processed the request but returned no text."
-
-                    # Split and send if too long
-                    await send_long_message(ctx, response, code_block=False)
-                else:
-                    error_msg = stderr.decode('utf-8').strip()
-                    logger.error(f"Gemini CLI error (code {process.returncode}): {error_msg}")
-                    await ctx.send(
-                        "❌ Sorry, I encountered an error while processing your question."
-                    )
-
-            except asyncio.TimeoutError:
-                process.kill()
-                await ctx.send("⏰ Sorry, the request timed out. Please try a simpler question.")
-
-        except Exception as e:
-            logger.error(f"Error in !ask command: {e}")
-            await ctx.send(f"❌ An error occurred: {str(e)}")
-
-
 @bot.command(name='help_events')
 async def help_events(ctx):
     """Show help for event commands"""
@@ -2029,12 +1968,6 @@ async def help_events(ctx):
     embed.add_field(
         name="🎯 Attendance & Scoring",
         value="**Emoji Reactions (Custom Emojis):**\n• `share_100` - 100% attendance (1.0x)\n• `share_75` - 75% attendance (0.75x)\n• `share_50` - 50% attendance (0.5x)\n• `share_25` - 25% attendance (0.25x)\n\n**Manual Attendance:**\n• Added via `add_users` command with fixed multipliers\n• Only supports: 1.0, 0.75, 0.5, 0.25\n• Example: `!add_users EVENT_ID 0.75 @user` gives 0.75x participation\n\n**Final Score = Event Multiplier × Participation Multiplier**\n• Dungeon/Miniboss/T8: 1x multiplier\n• Boss events: 2x multiplier\n• Omniboss events: 8x multiplier",
-        inline=False,
-    )
-
-    embed.add_field(
-        name="❓ Natural Language Help",
-        value=f"`{BOT_PREFIX}ask <question>`\nAsk Gemini anything about how to use the bot or what the rules are.\n\n**Example:**\n• `{BOT_PREFIX}ask how do I set up a dungeon run?`\n• `{BOT_PREFIX}ask what are the scoring rules?`",
         inline=False,
     )
 

@@ -25,11 +25,6 @@ These instructions are foundational mandates for all Gemini sessions working in 
 - **Format:** `[event_id] [event_type] name: user1 (score), user2 (score)`
 - **Rule:** Maintain the bracketed type and specific colon/comma spacing for parsability by external tools.
 
-### 6. Natural Language Help (`!ask`)
-- **Mandate:** The `!ask` command MUST use `gemini-cli` in a strict read-only sandbox.
-- **Pattern:** Use `gemini.cmd --prompt "..." --approval-mode=plan --skip-trust`.
-- **Constraint:** Never allow the `!ask` command to run without the `plan` approval mode, as it prevents any modifications to the codebase or environment.
-
 ## 🛠️ Tech Stack & Standards
 - **Language:** Python 3.10+ (f-strings and type hinting required)
 - **Bot Framework:** `discord.py`
