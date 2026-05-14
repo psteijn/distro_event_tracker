@@ -48,7 +48,7 @@ def parse_bot_log(log_path: str) -> Dict:
 def main():
     targets = [
         ("Distro Bot", "distro_task_log.txt"),
-        ("Ocean Bot", "ocean_task_log.txt")
+        ("Ocean Bot", "ocean_distro_task_log.txt")
     ]
     
     print("🚀 --- Gemini Deployment Report ---")
