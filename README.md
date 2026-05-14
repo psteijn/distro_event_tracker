@@ -68,6 +68,11 @@ If you want to run two different bots (e.g., for different guilds or purposes):
 2. Run `start_distro.bat` or `start_ocean.bat`.
 *These scripts automatically load their respective environment files and log to separate files.*
 
+#### **Automated Deployment (Windows Task Scheduler):**
+If the bot is running as a Windows Scheduled Task, you can use the deployment scripts to automatically restart the tasks with the latest code:
+- Run `deploy.bat` (requires PowerShell permissions to stop/start tasks).
+*This script restarts both `DistroEventTracker` and `OceanDistroEventTracker` tasks.*
+
 ---
 
 ## 🎮 Command Guide
