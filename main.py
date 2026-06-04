@@ -1,7 +1,10 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import asyncio
 import sys
+import json
+import csv
 from datetime import datetime
 import os
 import logging
@@ -12,6 +15,8 @@ from config import (
     DISCORD_TOKEN,
     BOT_PREFIX,
     EVENT_CHANNEL_ID,
+    DIBS_CHANNEL_ID,
+    ITEMS_CSV,
     EMOJI_HUNDRED,
     EMOJI_SEVENTY_FIVE,
     EMOJI_FIFTY,
@@ -42,7 +47,181 @@ PACIFIC_TZ = pytz.timezone('US/Pacific')
 intents = discord.Intents.default()
 intents.message_content = True
 intents.reactions = True
-bot = commands.Bot(command_prefix=BOT_PREFIX, intents=intents, case_insensitive=True)
+
+
+class EventBot(commands.Bot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    async def setup_hook(self):
+        # Sync the tree to make slash commands appear
+        await self.tree.sync()
+        logger.info("✅ Slash commands synchronized.")
+
+
+bot = EventBot(command_prefix=BOT_PREFIX, intents=intents, case_insensitive=True)
+
+
+async def refresh_dibs_summary(guild):
+    """Refreshes the dibs summary message in the designated channel"""
+    if not DIBS_CHANNEL_ID:
+        return
+
+    channel = bot.get_channel(int(DIBS_CHANNEL_ID))
+    if not channel:
+        logger.error(f"❌ Dibs channel {DIBS_CHANNEL_ID} not found for summary refresh")
+        return
+
+    # Delete old summary messages
+    try:
+        async for message in channel.history(limit=50):
+            if message.author == bot.user and message.embeds:
+                if message.embeds[0].title == "📦 Current Dibs Summary":
+                    await message.delete()
+    except Exception as e:
+        logger.error(f"❌ Error deleting old dibs summary: {e}")
+
+    # Create new summary embed
+    embed = discord.Embed(
+        title="📦 Current Dibs Summary",
+        description="Here is the list of current dibs for all players.",
+        color=discord.Color.gold(),
+    )
+
+    if not dibs_tracker.dibs:
+        embed.description = "No active dibs."
+    else:
+        for user_id, user_dibs in dibs_tracker.dibs.items():
+            user = bot.get_user(user_id)
+            user_name = user.name if user else f"Unknown User ({user_id})"
+
+            dibs_list = []
+            for item, qty in user_dibs.items():
+                qty_str = str(qty) if qty else "Any"
+                dibs_list.append(f"• **{item}**: {qty_str}")
+
+            embed.add_field(name=f"👤 {user_name}", value="\n".join(dibs_list), inline=False)
+
+    # Hide state in footer for reconstruction
+    embed.set_footer(text=f"DATA:{dibs_tracker.get_summary_data()}")
+    embed.timestamp = datetime.now(PACIFIC_TZ)
+
+    await channel.send(embed=embed)
+
+
+async def item_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> List[app_commands.Choice[str]]:
+    """Autocomplete for the /dibs command"""
+    items = dibs_tracker.all_items
+    return [
+        app_commands.Choice(name=item, value=item)
+        for item in items
+        if current.lower() in item.lower()
+    ][:25]
+
+
+async def undibs_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> List[app_commands.Choice[str]]:
+    """Autocomplete for the /undibs command (only items user has dibbed)"""
+    user_id = interaction.user.id
+    choices = [app_commands.Choice(name="[ALL] Clear all dibs", value="all")]
+
+    if user_id in dibs_tracker.dibs:
+        user_items = list(dibs_tracker.dibs[user_id].keys())
+        for item in user_items:
+            if current.lower() in item.lower():
+                choices.append(app_commands.Choice(name=item, value=item))
+
+    return choices[:25]
+
+
+@bot.tree.command(name="dibs", description="Claim dibs on an item from the distribution list")
+@app_commands.describe(item="The item you want to claim", quantity="Optional number of items")
+@app_commands.autocomplete(item=item_autocomplete)
+async def dibs(interaction: discord.Interaction, item: str, quantity: Optional[str] = None):
+    """Slash command to claim dibs"""
+    if DIBS_CHANNEL_ID and str(interaction.channel_id) != DIBS_CHANNEL_ID:
+        await interaction.response.send_message(
+            "❌ This command can only be used in the designated dibs channel.", ephemeral=True
+        )
+        return
+
+    # Validate item
+    if item not in dibs_tracker.all_items:
+        # Try fuzzy match if not an exact match
+        matches = [i for i in dibs_tracker.all_items if item.lower() in i.lower()]
+        if len(matches) == 1:
+            item = matches[0]
+        else:
+            await interaction.response.send_message(
+                f"❌ '{item}' is not a recognized item. Please use the autocomplete suggestions.",
+                ephemeral=True,
+            )
+            return
+
+    # Process quantity
+    qty_val = quantity if quantity else "Any"
+
+    dibs_tracker.add_dib(interaction.user.id, item, qty_val)
+    await interaction.response.send_message(
+        f"✅ Dibs registered: **{item}** (Quantity: {qty_val})", ephemeral=True
+    )
+
+    # Refresh the summary
+    await refresh_dibs_summary(interaction.guild)
+    logger.info(f"DIBS: {interaction.user.name} added {item} ({qty_val})")
+
+
+@bot.tree.command(name="undibs", description="Remove one or all of your dibs")
+@app_commands.describe(item="The item to remove, or 'all' to clear all")
+@app_commands.autocomplete(item=undibs_autocomplete)
+async def undibs(interaction: discord.Interaction, item: str):
+    """Slash command to remove dibs"""
+    if DIBS_CHANNEL_ID and str(interaction.channel_id) != DIBS_CHANNEL_ID:
+        await interaction.response.send_message(
+            "❌ This command can only be used in the designated dibs channel.", ephemeral=True
+        )
+        return
+
+    user_id = interaction.user.id
+
+    if item.lower() == "all":
+        if dibs_tracker.remove_all_dibs(user_id):
+            await interaction.response.send_message(
+                "✅ All your dibs have been cleared.", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                "❌ You have no active dibs to clear.", ephemeral=True
+            )
+    else:
+        # Exact or fuzzy match
+        target_item = item
+        if target_item not in dibs_tracker.dibs.get(user_id, {}):
+            fuzzy_match = dibs_tracker.fuzzy_match_item(user_id, item)
+            if fuzzy_match:
+                target_item = fuzzy_match
+            else:
+                await interaction.response.send_message(
+                    f"❌ You don't have dibs on '{item}'.", ephemeral=True
+                )
+                return
+
+        if dibs_tracker.remove_dib(user_id, target_item):
+            await interaction.response.send_message(
+                f"✅ Removed dibs on: **{target_item}**", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"❌ Failed to remove dibs on '{target_item}'.", ephemeral=True
+            )
+
+    # Refresh the summary
+    await refresh_dibs_summary(interaction.guild)
+    logger.info(f"UNDIBS: {interaction.user.name} removed {item}")
+
 
 # In-memory storage for events (will be replaced with database later)
 events_storage = {}
@@ -925,6 +1104,108 @@ class EventTracker:
 event_tracker = EventTracker(opt_out_file=REMINDER_OPT_OUT_FILE)
 
 
+class DibsTracker:
+    def __init__(self, items_csv: str = "items.csv"):
+        self.dibs = {}  # {user_id: {item_name: quantity}}
+        self.items_csv = items_csv
+        self.all_items = self.load_items_from_csv()
+
+    def load_items_from_csv(self) -> List[str]:
+        """Load valid items from CSV file"""
+        items = []
+        if os.path.exists(self.items_csv):
+            try:
+                with open(self.items_csv, mode='r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if 'item_name' in row:
+                            items.append(row['item_name'])
+                logger.info(f"✅ Loaded {len(items)} items from {self.items_csv}")
+            except Exception as e:
+                logger.error(f"❌ Error loading items from CSV: {e}")
+        else:
+            logger.warning(f"⚠️ Items CSV not found at {self.items_csv}")
+        return items
+
+    def add_dib(self, user_id: int, item_name: str, quantity: Union[int, str]):
+        """Add or update a dib for a user"""
+        if user_id not in self.dibs:
+            self.dibs[user_id] = {}
+        self.dibs[user_id][item_name] = quantity
+
+    def remove_dib(self, user_id: int, item_name: str) -> bool:
+        """Remove a specific dib for a user"""
+        if user_id in self.dibs and item_name in self.dibs[user_id]:
+            del self.dibs[user_id][item_name]
+            if not self.dibs[user_id]:
+                del self.dibs[user_id]
+            return True
+        return False
+
+    def remove_all_dibs(self, user_id: int) -> bool:
+        """Remove all dibs for a user"""
+        if user_id in self.dibs:
+            del self.dibs[user_id]
+            return True
+        return False
+
+    def get_summary_data(self) -> str:
+        """Generate a JSON string of the current dibs state for persistence"""
+        return json.dumps(self.dibs)
+
+    def load_from_summary_data(self, data_str: str):
+        """Rebuild state from a JSON string"""
+        try:
+            raw_data = json.loads(data_str)
+            # Convert keys back to integers (JSON keys are always strings)
+            self.dibs = {int(uid): dibs for uid, dibs in raw_data.items()}
+            logger.info(f"✅ Rebuilt dibs state for {len(self.dibs)} users")
+        except Exception as e:
+            logger.error(f"❌ Error rebuilding dibs from summary data: {e}")
+
+    async def reconstruct_from_history(self, bot):
+        """Reconstruct dibs from the most recent summary message in the dibs channel"""
+        if not DIBS_CHANNEL_ID:
+            return
+
+        logger.info("🔄 Reconstructing dibs from message history...")
+        channel = bot.get_channel(int(DIBS_CHANNEL_ID))
+        if not channel:
+            logger.error(f"❌ Dibs channel {DIBS_CHANNEL_ID} not found")
+            return
+
+        async for message in channel.history(limit=100):
+            if message.author == bot.user and message.embeds:
+                embed = message.embeds[0]
+                if embed.title == "📦 Current Dibs Summary":
+                    # Look for data in footer
+                    if embed.footer and embed.footer.text:
+                        footer_text = embed.footer.text
+                        if footer_text.startswith("DATA:"):
+                            data_str = footer_text.replace("DATA:", "")
+                            self.load_from_summary_data(data_str)
+                            logger.info("✅ Found latest dibs summary and reconstructed state.")
+                            return
+        logger.info("ℹ️ No previous dibs summary found. Starting with empty state.")
+
+    def fuzzy_match_item(self, user_id: int, query: str) -> Optional[str]:
+        """Find a unique item in user's dibs that matches the query"""
+        if user_id not in self.dibs:
+            return None
+
+        user_dibs = list(self.dibs[user_id].keys())
+        query = query.lower()
+
+        matches = [item for item in user_dibs if query in item.lower()]
+
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+
+dibs_tracker = DibsTracker(items_csv=ITEMS_CSV)
+
+
 def parse_timestamp(timestamp_str: str) -> datetime:
     """Parse various timestamp formats into datetime object in Pacific timezone"""
     timestamp_str = timestamp_str.strip()
@@ -1005,6 +1286,39 @@ def multiplier_to_emoji_string(multiplier: float) -> str:
         return str(twenty_five_emoji) if twenty_five_emoji else EMOJI_TWENTY_FIVE
 
 
+@bot.command(name='dibs_data')
+async def dibs_data_command(ctx):
+    """Generate raw dibs data for export"""
+    if (
+        DIBS_CHANNEL_ID
+        and str(ctx.channel.id) != DIBS_CHANNEL_ID
+        and ctx.author.id not in ADMIN_IDS
+    ):
+        await ctx.send("❌ This command can only be used in the designated dibs channel.")
+        return
+
+    if not dibs_tracker.dibs:
+        await ctx.send("No active dibs found.")
+        return
+
+    output_lines = []
+    # Sort by username for readability
+    sorted_users = sorted(
+        dibs_tracker.dibs.items(),
+        key=lambda x: bot.get_user(x[0]).name if bot.get_user(x[0]) else str(x[0]),
+    )
+
+    for user_id, user_dibs in sorted_users:
+        user = bot.get_user(user_id)
+        user_name = user.name if user else f"UnknownUser_{user_id}"
+
+        for item, qty in user_dibs.items():
+            qty_str = str(qty) if qty else "all"
+            output_lines.append(f"[{user_name}] {item}: {qty_str}")
+
+    await send_long_message(ctx, output_lines)
+
+
 @bot.event
 async def on_ready():
     global hundred_emoji, seventy_five_emoji, fifty_emoji, twenty_five_emoji
@@ -1052,21 +1366,34 @@ async def on_ready():
         f"⚡ [Phase 1] Basic initialization complete in {init_duration:.2f}s. Bot is now READY to receive commands."
     )
 
-    # Reconstruct events from message history
+    # Reconstruct events and dibs from message history
     try:
         recon_start_time = time.time()
-        reconstructed_count = await event_tracker.reconstruct_from_history(bot)
+        # Run reconstruction in parallel
+        results = await asyncio.gather(
+            event_tracker.reconstruct_from_history(bot),
+            dibs_tracker.reconstruct_from_history(bot),
+            return_exceptions=True,
+        )
+
+        recon_count = 0
+        if not isinstance(results[0], Exception):
+            recon_count = results[0]
+
+        if isinstance(results[1], Exception):
+            logger.error(f"❌ Error during dibs reconstruction: {results[1]}")
+
         recon_duration = time.time() - recon_start_time
         total_ready_time = time.time() - init_start_time
         logger.info(
-            f'🚀 [Phase 2] Historical reconstruction complete! Processed {reconstructed_count} events in {recon_duration:.2f}s.'
+            f'🚀 [Phase 2] Historical reconstruction complete! Processed {recon_count} events in {recon_duration:.2f}s.'
         )
         logger.info(
             f'🏁 Bot fully initialized and memory reconstructed in {total_ready_time:.2f}s.'
         )
     except Exception as e:
-        logger.error(f'❌ Error during event reconstruction: {e}')
-        logger.info('🚀 Bot ready! (Running without historical events)')
+        logger.error(f'❌ Error during reconstruction: {e}')
+        logger.info('🚀 Bot ready! (Running without historical data)')
 
 
 @bot.before_invoke
