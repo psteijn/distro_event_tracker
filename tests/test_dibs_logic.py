@@ -6,11 +6,9 @@ from main import DibsTracker
 @pytest.fixture
 def temp_items_csv(tmp_path):
     csv_file = tmp_path / "test_items.csv"
-    with open(csv_file, mode='w', encoding='utf-8', newline='') as f:
+    with open(csv_file, mode="w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["item_name"])
-        writer.writerow(["Command Aspect Core"])
-        writer.writerow(["Void Aspect Core"])
+        writer.writerow(["Command Aspect Core", "Void Aspect Core"])
         writer.writerow(["Air Aspect Core"])
     return str(csv_file)
 

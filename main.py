@@ -1111,15 +1111,16 @@ class DibsTracker:
         self.all_items = self.load_items_from_csv()
 
     def load_items_from_csv(self) -> List[str]:
-        """Load valid items from CSV file"""
+        """Load valid items from headerless CSV file"""
         items = []
         if os.path.exists(self.items_csv):
             try:
-                with open(self.items_csv, mode='r', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
+                with open(self.items_csv, mode="r", encoding="utf-8") as f:
+                    reader = csv.reader(f)
                     for row in reader:
-                        if 'item_name' in row:
-                            items.append(row['item_name'])
+                        for item in row:
+                            if item.strip():
+                                items.append(item.strip())
                 logger.info(f"✅ Loaded {len(items)} items from {self.items_csv}")
             except Exception as e:
                 logger.error(f"❌ Error loading items from CSV: {e}")
