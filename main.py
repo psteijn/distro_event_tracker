@@ -17,6 +17,7 @@ from config import (
     EMOJI_FIFTY,
     EMOJI_TWENTY_FIVE,
     ADMIN_IDS,
+    REMINDER_OPT_OUT_FILE,
 )
 from reminders import handle_event_reminder
 
@@ -359,8 +360,54 @@ def generate_single_event_text_summary(event: Dict) -> str:
 
 
 class EventTracker:
-    def __init__(self):
+    def __init__(self, opt_out_file: str = "reminders_opt_out.txt"):
         self.events = {}
+        self.opt_out_file = opt_out_file
+        self.opted_out_users = set()
+        self.load_opt_out_preferences()
+
+    def load_opt_out_preferences(self):
+        """Load opted-out users from the local file"""
+        if os.path.exists(self.opt_out_file):
+            try:
+                with open(self.opt_out_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            self.opted_out_users.add(int(line))
+                logger.info(
+                    f"✅ Loaded {len(self.opted_out_users)} opted-out users from {self.opt_out_file}"
+                )
+            except Exception as e:
+                logger.error(f"❌ Error loading opt-out preferences: {e}")
+        else:
+            logger.info(f"ℹ️ No opt-out file found at {self.opt_out_file}. Starting fresh.")
+
+    def save_opt_out_preferences(self):
+        """Save opted-out users to the local file"""
+        try:
+            with open(self.opt_out_file, 'w') as f:
+                for user_id in sorted(self.opted_out_users):
+                    f.write(f"{user_id}\n")
+            logger.info(f"💾 Saved opt-out preferences to {self.opt_out_file}")
+        except Exception as e:
+            logger.error(f"❌ Error saving opt-out preferences: {e}")
+
+    def toggle_reminders(self, user_id: int, status: bool) -> bool:
+        """Toggle reminder preference for a user. True = ON, False = OFF"""
+        if status:
+            # Opt back in
+            if user_id in self.opted_out_users:
+                self.opted_out_users.remove(user_id)
+                self.save_opt_out_preferences()
+                return True
+        else:
+            # Opt out
+            if user_id not in self.opted_out_users:
+                self.opted_out_users.add(user_id)
+                self.save_opt_out_preferences()
+                return True
+        return False
 
     def create_event(
         self,
@@ -875,7 +922,7 @@ class EventTracker:
 
 
 # Initialize event tracker
-event_tracker = EventTracker()
+event_tracker = EventTracker(opt_out_file=REMINDER_OPT_OUT_FILE)
 
 
 def parse_timestamp(timestamp_str: str) -> datetime:
@@ -1908,6 +1955,38 @@ async def rename_event_error(ctx, error):
         logger.error(f"An unhandled error in rename_event occurred: {error}")
 
 
+@bot.command(name='reminders')
+async def reminders(ctx, action: str = None):
+    """Toggle reminder DMs on or off for yourself.
+
+    Usage: !reminders on | off
+    """
+    if action is None:
+        # Check current status
+        is_opted_out = ctx.author.id in event_tracker.opted_out_users
+        status = "OFF" if is_opted_out else "ON"
+        await ctx.send(f"🔔 Your reminders for this bot are currently: **{status}**")
+        return
+
+    action = action.lower()
+    if action == "on":
+        if event_tracker.toggle_reminders(ctx.author.id, True):
+            await ctx.send(
+                "✅ Reminders turned **ON**. You will receive DMs for events you missed."
+            )
+        else:
+            await ctx.send("ℹ️ Reminders were already **ON**.")
+    elif action == "off":
+        if event_tracker.toggle_reminders(ctx.author.id, False):
+            await ctx.send(
+                "✅ Reminders turned **OFF**. You will no longer receive DM notifications."
+            )
+        else:
+            await ctx.send("ℹ️ Reminders were already **OFF**.")
+    else:
+        await ctx.send("❌ Invalid action. Use `!reminders on` or `!reminders off`.")
+
+
 @bot.command(name='help_events')
 async def help_events(ctx):
     """Show help for event commands"""
@@ -1962,6 +2041,12 @@ async def help_events(ctx):
     embed.add_field(
         name="🔙 Backfill Event",
         value=f"`{BOT_PREFIX}backfill <type> <message_id>`\nRecover an event from a non-bot message with reactions. The message text becomes the event name.\n\n**Types:** dungeon, mini, boss, t8, omni\n**Example:** `{BOT_PREFIX}backfill boss 123456789012345678`",
+        inline=False,
+    )
+
+    embed.add_field(
+        name="🔔 Reminder Preferences",
+        value=f"`{BOT_PREFIX}reminders [on|off]`\nToggle DM reminders for events you missed but attended previously.\n\n**Examples:**\n• `{BOT_PREFIX}reminders off` - Opt out of DMs\n• `{BOT_PREFIX}reminders on` - Opt back in to DMs",
         inline=False,
     )
 

@@ -1,6 +1,8 @@
 # Environment variables and local configs
 .env*
 !env_example.txt
+reminders_opt_out_*.txt
+reminders_opt_out.txt
 
 # Bot logs
 *.log

@@ -110,8 +110,14 @@ async def handle_event_reminder(bot, event_tracker, new_event, PACIFIC_TZ):
         # Identify the delta
         missing_ids = prev_attendees - new_attendees
 
+        # Filter out users who have opted out of reminders
+        opted_out_ids = event_tracker.opted_out_users
+        missing_ids = [uid for uid in missing_ids if uid not in opted_out_ids]
+
         if not missing_ids:
-            logger.info(f"No reminders needed for '{new_event['name']}'. Everyone already reacted.")
+            logger.info(
+                f"No reminders needed for '{new_event['name']}'. Everyone already reacted or opted out."
+            )
             return
 
         logger.info(f"Sending reminders for '{new_event['name']}' to {len(missing_ids)} users.")

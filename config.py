@@ -15,6 +15,7 @@ ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADMIN_IDS', '').split(',') if 
 # Bot Settings
 BOT_PREFIX = '!'
 EVENT_CHANNEL_ID = os.getenv('EVENT_CHANNEL_ID')
+REMINDER_OPT_OUT_FILE = os.getenv('REMINDER_OPT_OUT_FILE', 'reminders_opt_out.txt')
 EMOJI_HUNDRED = 'share_100'
 EMOJI_SEVENTY_FIVE = 'share_75'
 EMOJI_FIFTY = 'share_50'

@@ -222,3 +222,70 @@ async def test_reminder_throttles_dms(mock_bot, tracker):
         # Should sleep 120s once, and 1.0s twice (once for each user)
         # Total 3 sleeps
         assert mock_sleep.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_reminder_respects_opt_out(mock_bot, tracker):
+    """Verify that users who have opted out are skipped by reminders."""
+    # Alice (1) and Bob (2) were at the old event
+    tracker.create_event("old", "Old", 1, 50, 5, 1000.0, type_emoji="🏰", is_historical=False)
+    tracker.add_attendance("old", 1, "Alice", "X")
+    tracker.add_attendance("old", 2, "Bob", "X")
+
+    # Bob (2) opts out
+    tracker.opted_out_users.add(2)
+
+    new_event = tracker.create_event(
+        "new", "New", 1, 100, 10, 2000.0, type_emoji="🏰", is_historical=False
+    )
+
+    # Setup mocks
+    mock_channel = MagicMock()
+    mock_message = MagicMock()
+    mock_message.jump_url = "http://discord/jump"
+    mock_message.reactions = []  # No one reacted yet
+
+    # Mock previous message reactions
+    m1, m2 = MagicMock(), MagicMock()
+    u1, u2 = MagicMock(), MagicMock()
+    u1.id, u1.bot = 1, False
+    u2.id, u2.bot = 2, False
+
+    async def f1():
+        yield u1
+
+    async def f2():
+        yield u2
+
+    m1.users = f1
+    m2.users = f2
+
+    mock_message_prev = MagicMock()
+    mock_message_prev.reactions = [m1, m2]
+
+    async def fake_fetch(mid):
+        return mock_message if mid == 100 else mock_message_prev
+
+    mock_channel.fetch_message.side_effect = fake_fetch
+    mock_bot.get_channel.return_value = mock_channel
+
+    u_alice, u_bob = AsyncMock(), AsyncMock()
+    u_alice.id, u_alice.bot, u_alice.name = 1, False, "Alice"
+    u_bob.id, u_bob.bot, u_bob.name = 2, False, "Bob"
+    mock_bot.get_user.side_effect = lambda uid: {1: u_alice, 2: u_bob}.get(uid)
+
+    with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep, patch(
+        'reminders.datetime'
+    ) as mock_datetime:
+
+        # Mock current time to be close to new_event (2000.0)
+        mock_datetime.now.return_value.timestamp.return_value = 2005.0
+
+        await handle_event_reminder(mock_bot, tracker, new_event, None)
+
+        # Alice should be reminded, Bob should be skipped
+        assert u_alice.send.call_count == 1
+        assert u_bob.send.call_count == 0
+
+        # Should sleep 120s once, and 1.0s once (only for Alice)
+        assert mock_sleep.call_count == 2
