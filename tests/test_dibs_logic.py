@@ -81,3 +81,193 @@ def test_persistence_data_string():
     assert new_tracker.dibs[123]["Command Aspect Core"] == 5
     assert new_tracker.dibs[456]["Void Aspect Core"] == "all"
     assert isinstance(list(new_tracker.dibs.keys())[0], int)
+
+
+@pytest.mark.asyncio
+async def test_reconstruct_from_history_link_based():
+    import urllib.parse
+    import main
+
+    tracker = main.DibsTracker()
+    tracker.add_dib(123, "Command Aspect Core", 5)
+    data_str = tracker.get_summary_data()
+    encoded_data = urllib.parse.quote(data_str)
+
+    # Mock classes
+    class MockEmbed:
+        def __init__(self):
+            self.title = "‎"
+            self.description = f"[‎](http://dibs.data?payload={encoded_data})"
+            self.footer = None
+
+    class MockMessage:
+        def __init__(self, author):
+            self.author = author
+            self.embeds = [MockEmbed()]
+
+    class MockHistory:
+        def __init__(self, message):
+            self.message = message
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if self.message:
+                msg = self.message
+                self.message = None
+                return msg
+            raise StopAsyncIteration
+
+    class MockChannel:
+        def __init__(self, message):
+            self.message = message
+
+        def history(self, limit):
+            return MockHistory(self.message)
+
+    class MockUser:
+        pass
+
+    class MockBot:
+        def __init__(self):
+            self.user = MockUser()
+
+        def get_channel(self, channel_id):
+            return MockChannel(MockMessage(self.user))
+
+    # Set DIBS_CHANNEL_ID to a mock value so the function doesn't return immediately
+    main.DIBS_CHANNEL_ID = "12345"
+
+    new_tracker = main.DibsTracker()
+    await new_tracker.reconstruct_from_history(MockBot())
+
+    assert new_tracker.dibs[123]["Command Aspect Core"] == 5
+
+
+@pytest.mark.asyncio
+async def test_reconstruct_from_history_legacy():
+    import main
+
+    tracker = main.DibsTracker()
+    tracker.add_dib(789, "Void Aspect Core", "all")
+    data_str = tracker.get_summary_data()
+
+    class MockFooter:
+        def __init__(self):
+            self.text = f"DATA:{data_str}"
+
+    class MockEmbed:
+        def __init__(self):
+            self.title = "⚙️ Dibs System Data (DO NOT DELETE)"
+            self.description = "‎"
+            self.footer = MockFooter()
+
+    class MockMessage:
+        def __init__(self, author):
+            self.author = author
+            self.embeds = [MockEmbed()]
+
+    class MockHistory:
+        def __init__(self, message):
+            self.message = message
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if self.message:
+                msg = self.message
+                self.message = None
+                return msg
+            raise StopAsyncIteration
+
+    class MockChannel:
+        def __init__(self, message):
+            self.message = message
+
+        def history(self, limit):
+            return MockHistory(self.message)
+
+    class MockUser:
+        pass
+
+    class MockBot:
+        def __init__(self):
+            self.user = MockUser()
+
+        def get_channel(self, channel_id):
+            return MockChannel(MockMessage(self.user))
+
+    main.DIBS_CHANNEL_ID = "12345"
+
+    new_tracker = main.DibsTracker()
+    await new_tracker.reconstruct_from_history(MockBot())
+
+    assert new_tracker.dibs[789]["Void Aspect Core"] == "all"
+
+
+@pytest.mark.asyncio
+async def test_reconstruct_from_history_icon_url():
+    import urllib.parse
+    import main
+
+    tracker = main.DibsTracker()
+    tracker.add_dib(555, "Air Aspect Core", 3)
+    data_str = tracker.get_summary_data()
+    encoded_data = urllib.parse.quote(data_str)
+
+    class MockFooter:
+        def __init__(self):
+            self.text = "‎"
+            self.icon_url = f"https://dibs.data?payload={encoded_data}"
+
+    class MockEmbed:
+        def __init__(self):
+            self.title = "‎"
+            self.description = "‎"
+            self.footer = MockFooter()
+
+    class MockMessage:
+        def __init__(self, author):
+            self.author = author
+            self.embeds = [MockEmbed()]
+
+    class MockHistory:
+        def __init__(self, message):
+            self.message = message
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if self.message:
+                msg = self.message
+                self.message = None
+                return msg
+            raise StopAsyncIteration
+
+    class MockChannel:
+        def __init__(self, message):
+            self.message = message
+
+        def history(self, limit):
+            return MockHistory(self.message)
+
+    class MockUser:
+        pass
+
+    class MockBot:
+        def __init__(self):
+            self.user = MockUser()
+
+        def get_channel(self, channel_id):
+            return MockChannel(MockMessage(self.user))
+
+    main.DIBS_CHANNEL_ID = "12345"
+
+    new_tracker = main.DibsTracker()
+    await new_tracker.reconstruct_from_history(MockBot())
+
+    assert new_tracker.dibs[555]["Air Aspect Core"] == 3
+
