@@ -11,7 +11,7 @@ This file gives Codex-specific guidance for working on tests in this repository.
 ## Writing Tests
 
 - Mark async tests with `@pytest.mark.asyncio`.
-- For pure logic, test helpers in `main.py` directly with controlled data.
+- For pure logic, test helpers in the owning feature module directly with controlled data.
 - For command behavior, exercise the bot-facing function with mock interactions and verify:
   - response text,
   - channel gating,
@@ -33,4 +33,3 @@ This file gives Codex-specific guidance for working on tests in this repository.
 - Weighted score calculation.
 - Manual attendance formatting.
 - Dibs and undibs state changes, including clear-all behavior and invalid quantity handling.
-

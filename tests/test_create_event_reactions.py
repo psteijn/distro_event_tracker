@@ -3,20 +3,21 @@ Tests that creating an event adds all four participation emoji reactions
 (25%%, 50%%, 75%%, 100%%), not just one. Regression test for commit 9c6e298.
 """
 
-import pytest
-import discord
 from datetime import datetime
 
-import main
-from main import create_event_with_multiplier, event_tracker
-from tests.utils_discord_mocks import DummyCtx, FakeMessage
-from config import (
-    EMOJI_TWENTY_FIVE,
-    EMOJI_FIFTY,
-    EMOJI_SEVENTY_FIVE,
-    EMOJI_HUNDRED,
-)
+import discord
+import pytest
 import pytz
+from tests.utils_discord_mocks import DummyCtx, FakeMessage
+
+from distro_event_tracker import bot as main
+from distro_event_tracker.bot import create_event_with_multiplier, event_tracker
+from distro_event_tracker.config import (
+    EMOJI_FIFTY,
+    EMOJI_HUNDRED,
+    EMOJI_SEVENTY_FIVE,
+    EMOJI_TWENTY_FIVE,
+)
 
 PACIFIC_TZ = pytz.timezone("US/Pacific")
 

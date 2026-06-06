@@ -1,5 +1,6 @@
 import pytest
-from main import parse_timestamp, PACIFIC_TZ
+
+from distro_event_tracker.bot import PACIFIC_TZ, parse_timestamp
 
 
 def test_parse_timestamp_epoch():

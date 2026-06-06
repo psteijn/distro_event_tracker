@@ -1,10 +1,10 @@
-import pytest
 import discord
+import pytest
+from tests.utils_discord_mocks import DummyCtx, FakeChannel, FakeMember, FakeMessage
 
-import main
-from main import event_tracker, add_users
-from tests.utils_discord_mocks import DummyCtx, FakeMessage, FakeChannel, FakeMember
-from config import EMOJI_HUNDRED
+from distro_event_tracker import bot as main
+from distro_event_tracker.bot import add_users, event_tracker
+from distro_event_tracker.config import EMOJI_HUNDRED
 
 
 @pytest.mark.asyncio

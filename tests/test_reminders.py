@@ -1,7 +1,9 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from reminders import handle_event_reminder
-from main import EventTracker
+
+import pytest
+
+from distro_event_tracker.bot import EventTracker
+from distro_event_tracker.events.reminders import handle_event_reminder
 
 
 @pytest.fixture
@@ -113,9 +115,10 @@ async def test_reminder_identifies_missing_users_and_includes_creator(mock_bot, 
 
     mock_bot.get_user.side_effect = lambda uid: {10: mock_user_10, 20: mock_user_20}.get(uid)
 
-    with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep, patch(
-        'reminders.datetime'
-    ) as mock_datetime:
+    with (
+        patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep,
+        patch('distro_event_tracker.events.reminders.datetime') as mock_datetime,
+    ):
 
         # Mock current time to be close to new_event
         mock_datetime.now.return_value.timestamp.return_value = 2005.0
@@ -154,9 +157,10 @@ async def test_reminder_absolute_age_skip(mock_bot, tracker):
         "old", "Old", 1, 100, 1, 1000.0, type_emoji="🏰", is_historical=False
     )
 
-    with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep, patch(
-        'reminders.datetime'
-    ) as mock_datetime:
+    with (
+        patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep,
+        patch('distro_event_tracker.events.reminders.datetime') as mock_datetime,
+    ):
 
         # Mock current time to be 11 minutes after the event
         mock_datetime.now.return_value.timestamp.return_value = 1000.0 + 660.0
@@ -210,9 +214,10 @@ async def test_reminder_throttles_dms(mock_bot, tracker):
     udm1.bot = udm2.bot = False
     mock_bot.get_user.side_effect = lambda uid: {1: udm1, 2: udm2}.get(uid)
 
-    with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep, patch(
-        'reminders.datetime'
-    ) as mock_datetime:
+    with (
+        patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep,
+        patch('distro_event_tracker.events.reminders.datetime') as mock_datetime,
+    ):
 
         # Mock current time to be close to new_event (2000.0)
         mock_datetime.now.return_value.timestamp.return_value = 2005.0
@@ -274,9 +279,10 @@ async def test_reminder_respects_opt_out(mock_bot, tracker):
     u_bob.id, u_bob.bot, u_bob.name = 2, False, "Bob"
     mock_bot.get_user.side_effect = lambda uid: {1: u_alice, 2: u_bob}.get(uid)
 
-    with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep, patch(
-        'reminders.datetime'
-    ) as mock_datetime:
+    with (
+        patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep,
+        patch('distro_event_tracker.events.reminders.datetime') as mock_datetime,
+    ):
 
         # Mock current time to be close to new_event (2000.0)
         mock_datetime.now.return_value.timestamp.return_value = 2005.0

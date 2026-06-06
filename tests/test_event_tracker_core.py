@@ -1,5 +1,5 @@
-from main import EventTracker
-from config import EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY
+from distro_event_tracker.bot import EventTracker
+from distro_event_tracker.config import EMOJI_FIFTY, EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE
 
 
 def setup_event_with_tracker():

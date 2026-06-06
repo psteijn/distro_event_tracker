@@ -1,0 +1,16 @@
+[importlinter]
+root_package = distro_event_tracker
+include_external_packages = True
+
+[importlinter:contract:domain-modules-do-not-depend-on-runtime]
+name = Domain modules do not depend on the Discord runtime
+type = forbidden
+source_modules =
+    distro_event_tracker.events.models
+    distro_event_tracker.events.scoring
+    distro_event_tracker.events.persistence
+    distro_event_tracker.dibs.models
+    distro_event_tracker.dibs.persistence
+forbidden_modules =
+    distro_event_tracker.bot
+    discord

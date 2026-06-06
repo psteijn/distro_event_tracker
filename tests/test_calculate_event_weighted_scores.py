@@ -1,5 +1,10 @@
-from main import calculate_event_weighted_scores
-from config import EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY, EMOJI_TWENTY_FIVE
+from distro_event_tracker.bot import calculate_event_weighted_scores
+from distro_event_tracker.config import (
+    EMOJI_FIFTY,
+    EMOJI_HUNDRED,
+    EMOJI_SEVENTY_FIVE,
+    EMOJI_TWENTY_FIVE,
+)
 
 
 def make_base_event():

@@ -1,11 +1,12 @@
-import pytest
-from datetime import datetime, timezone
-import pytz
 import asyncio
+from datetime import datetime, timezone
 
-import main
-from main import backfill, event_tracker
-from tests.utils_discord_mocks import DummyCtx, DummyAuthor, FakeMessage
+import pytest
+import pytz
+from tests.utils_discord_mocks import DummyAuthor, DummyCtx, FakeMessage
+
+from distro_event_tracker import bot as main
+from distro_event_tracker.bot import backfill, event_tracker
 
 PACIFIC_TZ = pytz.timezone("US/Pacific")
 

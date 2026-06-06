@@ -1,4 +1,7 @@
 import os
+from dataclasses import dataclass
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -26,3 +29,29 @@ EMOJI_TWENTY_FIVE = 'share_25'
 # Summary format settings
 SUMMARY_DATE_FORMAT = '%Y-%m-%d'
 SUMMARY_TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+
+
+@dataclass(frozen=True)
+class Settings:
+    """Typed runtime configuration used by new package modules."""
+
+    discord_token: str | None
+    bot_prefix: str
+    event_channel_id: str | None
+    dibs_channel_id: str | None
+    items_csv: Path
+    reminder_opt_out_file: Path
+    admin_ids: tuple[int, ...]
+
+
+def load_settings() -> Settings:
+    """Build settings from the environment loaded by this module."""
+    return Settings(
+        discord_token=DISCORD_TOKEN,
+        bot_prefix=BOT_PREFIX,
+        event_channel_id=EVENT_CHANNEL_ID,
+        dibs_channel_id=DIBS_CHANNEL_ID,
+        items_csv=Path(ITEMS_CSV),
+        reminder_opt_out_file=Path(REMINDER_OPT_OUT_FILE),
+        admin_ids=tuple(ADMIN_IDS),
+    )

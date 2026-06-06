@@ -1,7 +1,9 @@
-import pytest
 import csv
-import main
-from main import (
+
+import pytest
+
+from distro_event_tracker import bot as main
+from distro_event_tracker.bot import (
     DibsTracker,
     normalize_dibs_quantity,
     resolve_dibs_item_name,
@@ -134,7 +136,8 @@ def test_persistence_data_string():
 @pytest.mark.asyncio
 async def test_reconstruct_from_history_link_based():
     import urllib.parse
-    import main
+
+    from distro_event_tracker import bot as main
 
     tracker = main.DibsTracker()
     tracker.add_dib(123, "Command Aspect Core", 5)
@@ -195,7 +198,7 @@ async def test_reconstruct_from_history_link_based():
 
 @pytest.mark.asyncio
 async def test_reconstruct_from_history_legacy():
-    import main
+    from distro_event_tracker import bot as main
 
     tracker = main.DibsTracker()
     tracker.add_dib(789, "Void Aspect Core", "all")
@@ -258,7 +261,8 @@ async def test_reconstruct_from_history_legacy():
 @pytest.mark.asyncio
 async def test_reconstruct_from_history_icon_url():
     import urllib.parse
-    import main
+
+    from distro_event_tracker import bot as main
 
     tracker = main.DibsTracker()
     tracker.add_dib(555, "Air Aspect Core", 3)

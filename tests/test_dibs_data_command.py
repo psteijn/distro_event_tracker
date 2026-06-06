@@ -1,7 +1,7 @@
 import pytest
-
-import main
 from tests.utils_discord_mocks import DummyCtx
+
+from distro_event_tracker import bot as main
 
 
 @pytest.mark.asyncio

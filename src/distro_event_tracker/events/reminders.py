@@ -24,9 +24,10 @@ to react to a new one if they haven't done so within 2 minutes.
 """
 
 import asyncio
-import discord
 import logging
 from datetime import datetime
+
+import discord
 
 logger = logging.getLogger('bot.reminders')
 

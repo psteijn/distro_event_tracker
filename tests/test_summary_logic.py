@@ -1,5 +1,6 @@
 import pytest
-from main import EventTracker
+
+from distro_event_tracker.bot import EventTracker
 
 
 @pytest.fixture

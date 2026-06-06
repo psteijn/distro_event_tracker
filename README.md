@@ -53,7 +53,8 @@ The bot uses `.env` files for configuration.
 2. Fill in your `DISCORD_TOKEN` and `EVENT_CHANNEL_ID`.
 
 **Customizing Multipliers & Emojis:**
-Edit `config.py` to change scoring weights or custom emoji names (e.g., `share_100`, `share_75`).
+Edit `src/distro_event_tracker/config.py` to change scoring weights or custom emoji names
+(e.g., `share_100`, `share_75`).
 
 ### 4. Running the Bot
 The bot includes convenience scripts for different environments:
@@ -125,6 +126,9 @@ To maintain momentum during "Distros," the bot helps remind active players to re
 To run the automated test suite (42+ tests covering range logic, scoring, and reminders):
 - **Windows:** `run_tests.bat`
 - **Linux/Shell:** `./run_tests.sh`
+
+For the complete non-mutating validation suite, including formatting, lint, typing,
+architecture contracts, tests, and coverage, run `check.bat` or `./check.sh`.
 
 ---
 

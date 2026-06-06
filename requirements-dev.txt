@@ -1,4 +1,7 @@
 # Lint and format (install with: pip install -r requirements-dev.txt)
 -r requirements.txt
 black>=24.0.0
+import-linter>=2.1
+mypy>=1.15
+pytest-cov>=6.0
 ruff>=0.8.0

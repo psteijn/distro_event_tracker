@@ -18,7 +18,14 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
-      - name: Lint
+      - name: Install development tools
+        run: python -m pip install -e ".[dev]"
+
+      - name: Validate formatting, lint, types, and architecture
         shell: bash
-        run: bash ./lint.sh
+        run: |
+          python -m black --check src tests
+          python -m ruff check src tests
+          python -m mypy
+          PYTHONPATH=src lint-imports
 

@@ -1,6 +1,6 @@
 import pytest
 
-import main
+from distro_event_tracker import bot as main
 
 
 class MockResponse:

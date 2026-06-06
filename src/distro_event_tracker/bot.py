@@ -1,30 +1,35 @@
-import discord
-from discord.ext import commands
-from discord import app_commands
 import asyncio
-import sys
-import json
 import csv
-from datetime import datetime
-import os
+import json
 import logging
+import os
+import sys
 import time
+from datetime import datetime
 from typing import Dict, List, Optional, Union
+
+import discord
 import pytz
-from config import (
-    DISCORD_TOKEN,
+from discord import app_commands
+from discord.ext import commands
+
+from .config import (
+    ADMIN_IDS,
     BOT_PREFIX,
-    EVENT_CHANNEL_ID,
     DIBS_CHANNEL_ID,
-    ITEMS_CSV,
+    DISCORD_TOKEN,
+    EMOJI_FIFTY,
     EMOJI_HUNDRED,
     EMOJI_SEVENTY_FIVE,
-    EMOJI_FIFTY,
     EMOJI_TWENTY_FIVE,
-    ADMIN_IDS,
+    EVENT_CHANNEL_ID,
+    ITEMS_CSV,
     REMINDER_OPT_OUT_FILE,
 )
-from reminders import handle_event_reminder
+from .events.models import Event
+from .events.reminders import handle_event_reminder
+from .events.scoring import calculate_event_weighted_scores as calculate_domain_event_scores
+from .events.service import EventService
 
 # Logging configuration
 log_file = os.getenv('LOG_FILE', 'bot.log')
@@ -54,6 +59,10 @@ class EventBot(commands.Bot):
         super().__init__(*args, **kwargs)
 
     async def setup_hook(self):
+        from .bootstrap import install_cogs
+
+        await install_cogs(self, sys.modules[__name__], DIBS_CHANNEL_ID)
+
         # Sync the tree globally to make slash commands appear everywhere
         try:
             # Syncing with guild=None (default) makes commands global
@@ -116,8 +125,8 @@ async def refresh_dibs_summary(guild):
 
     # 1. Send the Data Message(s) (Machine readable persistence)
     # We split the dibs state into multiple chunks to stay safely under Discord's 2,048 character footer icon_url limit.
-    import urllib.parse
     import json
+    import urllib.parse
 
     chunks = []
     current_chunk = {}
@@ -598,6 +607,9 @@ def update_embed_manual_attendance(
 
 def calculate_event_weighted_scores(event: Dict) -> Dict[str, float]:
     """Calculate weighted scores for attendees of a single event"""
+    return calculate_domain_event_scores(event)
+
+    # Compatibility implementation retained temporarily for easy wire-format auditing.
     user_scores = {}
     event_multiplier = event.get('multiplier', 1.0)
 
@@ -688,7 +700,8 @@ def generate_single_event_text_summary(event: Dict) -> str:
 
 class EventTracker:
     def __init__(self, opt_out_file: str = "reminders_opt_out.txt"):
-        self.events = {}
+        self.service = EventService()
+        self.events = self.service.events
         self.opt_out_file = opt_out_file
         self.opted_out_users = set()
         self.load_opt_out_preferences()
@@ -749,24 +762,23 @@ class EventTracker:
         is_historical: bool = False,
     ) -> Dict:
         """Create a new event with a multiplier for scoring"""
-        event = {
-            'id': event_id,
-            'name': name,
-            'type_emoji': type_emoji,
-            'channel_id': channel_id,
-            'message_id': message_id,
-            'creator_id': creator_id,
-            'created_at': created_at,
-            'multiplier': multiplier,
-            'attendance': {},
-            'manual_attendance': [],
-            'is_historical': is_historical,
-        }
-        self.events[event_id] = event
-        return event
+        event = Event(
+            id=event_id,
+            name=name,
+            type_emoji=type_emoji,
+            channel_id=channel_id,
+            message_id=message_id,
+            creator_id=creator_id,
+            created_at=created_at,
+            multiplier=multiplier,
+            is_historical=is_historical,
+        )
+        return self.service.create_event(event)
 
     def add_attendance(self, event_id: str, user_id: int, user_name: str, emoji: str) -> bool:
         """Add attendance record for a user"""
+        return self.service.add_attendance(event_id, user_id, user_name, emoji)
+
         if event_id in self.events:
             if user_id not in self.events[event_id]['attendance']:
                 self.events[event_id]['attendance'][user_id] = (user_name, [])
@@ -777,6 +789,8 @@ class EventTracker:
 
     def remove_attendance(self, event_id: str, user_id: int, user_name: str, emoji: str) -> bool:
         """Remove attendance record for a user"""
+        return self.service.remove_attendance(event_id, user_id, emoji)
+
         if event_id in self.events and user_id in self.events[event_id]['attendance']:
             if emoji in self.events[event_id]['attendance'][user_id][1]:
                 self.events[event_id]['attendance'][user_id][1].remove(emoji)
@@ -787,6 +801,8 @@ class EventTracker:
 
     def get_events_in_range(self, start_timestamp_sec: int, end_timestamp_sec: int) -> List[Dict]:
         """Get all events within a date range"""
+        return self.service.events_in_range(start_timestamp_sec, end_timestamp_sec)
+
         filtered_events = []
         for event in self.events.values():
             event_timestamp_sec = event['created_at']
@@ -799,6 +815,8 @@ class EventTracker:
 
     def get_events_between_ids(self, start_id: str, end_id: str) -> List[Dict]:
         """Get all events between two specific IDs (inclusive)"""
+        return self.service.events_between_ids(start_id, end_id)
+
         # Sort all events chronologically
         all_events = sorted(self.events.values(), key=lambda x: x['created_at'])
 
@@ -820,11 +838,15 @@ class EventTracker:
 
     def get_last_n_events(self, n: int) -> List[Dict]:
         """Get the most recent N events"""
+        return self.service.last_events(n)
+
         all_events = sorted(self.events.values(), key=lambda x: x['created_at'], reverse=True)
         return sorted(all_events[:n], key=lambda x: x['created_at'])
 
     def get_most_recent_before(self, event_id: str) -> Optional[Dict]:
         """Find the most recent event created before the given event ID"""
+        return self.service.most_recent_before(event_id)
+
         if event_id not in self.events:
             return None
 
@@ -2669,11 +2691,12 @@ async def help_events(ctx):
     await ctx.send(embed=embed)
 
 
-if __name__ == "__main__":
+def run() -> None:
+    """Run the bot process with retry-on-disconnect behavior."""
     if not DISCORD_TOKEN:
         logger.error("Error: DISCORD_TOKEN not found in environment variables")
         logger.error("Please create a .env file with your Discord bot token")
-        sys.exit(1)
+        raise SystemExit(1)
 
     retry_delay = 30  # seconds to wait between connection attempts
 
@@ -2692,3 +2715,7 @@ if __name__ == "__main__":
             logger.error(f"Bot failed to start or connection lost: {e}")
             logger.info(f"Retrying in {retry_delay} seconds... (Press Ctrl+C to stop)")
             time.sleep(retry_delay)
+
+
+if __name__ == "__main__":
+    run()

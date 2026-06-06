@@ -1,9 +1,9 @@
-import pytest
 import discord
+import pytest
+from tests.utils_discord_mocks import DummyCtx, FakeChannel, FakeMessage
 
-import main
-from main import event_tracker, rename_event
-from tests.utils_discord_mocks import DummyCtx, FakeMessage, FakeChannel
+from distro_event_tracker import bot as main
+from distro_event_tracker.bot import event_tracker, rename_event
 
 
 @pytest.mark.asyncio

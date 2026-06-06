@@ -30,7 +30,8 @@ echo Bot is starting... Press Ctrl+C to stop the bot
 echo.
 
 set PYTHONIOENCODING=utf-8
-python main.py
+set PYTHONPATH=%~dp0src
+python -m distro_event_tracker
 
 REM If we get here, the bot stopped
 echo.

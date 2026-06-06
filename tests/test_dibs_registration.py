@@ -1,4 +1,4 @@
-import main
+from distro_event_tracker import bot as main
 
 
 def test_register_dibs_tree_command_skips_when_channel_missing(monkeypatch):

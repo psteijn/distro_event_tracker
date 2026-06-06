@@ -1,6 +1,7 @@
 import pytest
-from main import event_tracker, missing
 from tests.utils_discord_mocks import DummyCtx
+
+from distro_event_tracker.bot import event_tracker, missing
 
 
 @pytest.mark.asyncio

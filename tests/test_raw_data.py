@@ -1,4 +1,4 @@
-from main import EventTracker, EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EMOJI_FIFTY
+from distro_event_tracker.bot import EMOJI_FIFTY, EMOJI_HUNDRED, EMOJI_SEVENTY_FIVE, EventTracker
 
 
 def test_generate_raw_data_summary():

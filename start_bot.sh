@@ -51,7 +51,8 @@ echo "Bot is starting... Press Ctrl+C to stop the bot"
 echo
 
 export PYTHONIOENCODING=utf-8
-python main.py
+export PYTHONPATH="${BASH_SOURCE[0]%/*}/src"
+python -m distro_event_tracker
 
 # If we get here, the bot stopped
 echo
