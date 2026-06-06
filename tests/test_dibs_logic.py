@@ -54,6 +54,20 @@ def test_resolve_dibs_item_name_matches_case_insensitively(monkeypatch):
     assert resolve_dibs_item_name("command aspect core") == "Command Aspect Core"
 
 
+def test_custom_dib_storage_and_resolution():
+    tracker = DibsTracker()
+    tracker.add_custom_dib(123, "Something Weird", 2)
+
+    assert tracker.dibs[123]["__custom__:Something Weird"] == 2
+    assert (
+        DibsTracker.display_dib_item_name("__custom__:Something Weird") == "Custom: Something Weird"
+    )
+    assert (
+        tracker.resolve_user_dib_key(123, "Custom: Something Weird") == "__custom__:Something Weird"
+    )
+    assert tracker.fuzzy_match_item(123, "Something Weird") == "Custom: Something Weird"
+
+
 def test_remove_dib():
     tracker = DibsTracker()
     tracker.add_dib(123, "Command Aspect Core", 5)
@@ -64,6 +78,14 @@ def test_remove_dib():
     assert "Void Aspect Core" in tracker.dibs[123]
 
     assert tracker.remove_dib(123, "Void Aspect Core") is True
+    assert 123 not in tracker.dibs
+
+
+def test_remove_custom_dib():
+    tracker = DibsTracker()
+    tracker.add_custom_dib(123, "Something Weird", 2)
+
+    assert tracker.remove_dib(123, "Custom: Something Weird") is True
     assert 123 not in tracker.dibs
 
 
@@ -96,6 +118,7 @@ def test_persistence_data_string():
     tracker = DibsTracker()
     tracker.add_dib(123, "Command Aspect Core", 5)
     tracker.add_dib(456, "Void Aspect Core", "all")
+    tracker.add_custom_dib(456, "Something Weird", 2)
 
     data_str = tracker.get_summary_data()
 
@@ -104,6 +127,7 @@ def test_persistence_data_string():
 
     assert new_tracker.dibs[123]["Command Aspect Core"] == 5
     assert new_tracker.dibs[456]["Void Aspect Core"] == "all"
+    assert new_tracker.dibs[456]["__custom__:Something Weird"] == 2
     assert isinstance(list(new_tracker.dibs.keys())[0], int)
 
 
@@ -238,6 +262,7 @@ async def test_reconstruct_from_history_icon_url():
 
     tracker = main.DibsTracker()
     tracker.add_dib(555, "Air Aspect Core", 3)
+    tracker.add_custom_dib(555, "Manual review note", 4)
     data_str = tracker.get_summary_data()
     encoded_data = urllib.parse.quote(data_str)
 
@@ -294,3 +319,4 @@ async def test_reconstruct_from_history_icon_url():
     await new_tracker.reconstruct_from_history(MockBot())
 
     assert new_tracker.dibs[555]["Air Aspect Core"] == 3
+    assert new_tracker.dibs[555]["__custom__:Manual review note"] == 4

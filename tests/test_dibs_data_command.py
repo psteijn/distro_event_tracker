@@ -9,6 +9,7 @@ async def test_dibs_data_uses_resolved_usernames_and_requested_format(monkeypatc
     main.dibs_tracker.dibs = {
         111: {"Shadow Aspect Core": 10},
         222: {"Fortune Aspect Core": "Any", "blood phylactery": 2},
+        333: {"__custom__:Use this for manual review": 4},
     }
 
     class ResolvedUser:
@@ -46,6 +47,7 @@ async def test_dibs_data_uses_resolved_usernames_and_requested_format(monkeypatc
         "@Alpha, Shadow Aspect Core, 10",
         "@Beta, Fortune Aspect Core, Any",
         "@Beta, blood phylactery, 2",
+        "@UnknownUser_333, Custom: Use this for manual review, 4",
     ]
 
 

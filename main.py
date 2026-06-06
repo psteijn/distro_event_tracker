@@ -68,6 +68,17 @@ class EventBot(commands.Bot):
 bot = EventBot(command_prefix=BOT_PREFIX, intents=intents, case_insensitive=True)
 
 
+def register_dibs_tree_command(*args, **kwargs):
+    """Register a slash command only when the dibs channel is configured."""
+
+    def decorator(func):
+        if DIBS_CHANNEL_ID:
+            return bot.tree.command(*args, **kwargs)(func)
+        return func
+
+    return decorator
+
+
 async def refresh_dibs_summary(guild):
     """Refreshes the dibs summary message in the designated channel"""
     if not DIBS_CHANNEL_ID:
@@ -171,7 +182,7 @@ async def refresh_dibs_summary(guild):
                 claims.append(f"<@{user_id}> ({qty_str})")
 
             claims_str = ", ".join(claims)
-            lines.append(f"**{item}** | {claims_str}")
+            lines.append(f"**{DibsTracker.display_dib_item_name(item)}** | {claims_str}")
 
         summary_embed.description = "\n".join(lines)
 
@@ -238,7 +249,9 @@ async def undibs_autocomplete(
     return choices[:25]
 
 
-@bot.tree.command(name="dibs", description="Claim dibs on an item from the distribution list")
+@register_dibs_tree_command(
+    name="dibs", description="Claim dibs on an item from the distribution list"
+)
 @app_commands.describe(item="The item you want to claim", quantity="Optional number of items")
 @app_commands.autocomplete(item=item_autocomplete)
 async def dibs(interaction: discord.Interaction, item: str, quantity: Optional[int] = None):
@@ -277,7 +290,42 @@ async def dibs(interaction: discord.Interaction, item: str, quantity: Optional[i
     logger.info(f"DIBS: {interaction.user.name} added {item} ({qty_val})")
 
 
-@bot.tree.command(name="undibs", description="Remove one or all of your dibs")
+@register_dibs_tree_command(
+    name="custom_dibs", description="Claim a custom dibs entry using free-form text"
+)
+@app_commands.describe(text="The custom dibs text", quantity="Optional number of items")
+async def custom_dibs(interaction: discord.Interaction, text: str, quantity: Optional[int] = None):
+    """Slash command to claim a custom dibs entry."""
+    if DIBS_CHANNEL_ID and str(interaction.channel_id) != DIBS_CHANNEL_ID:
+        await interaction.response.send_message(
+            "❌ This command can only be used in the designated dibs channel.", ephemeral=True
+        )
+        return
+
+    item_text = " ".join(text.split()).strip()
+    if not item_text:
+        await interaction.response.send_message(
+            "❌ Please provide some text for your custom dibs entry.", ephemeral=True
+        )
+        return
+
+    try:
+        qty_val = normalize_dibs_quantity(quantity)
+    except ValueError as exc:
+        await interaction.response.send_message(f"❌ {exc}", ephemeral=True)
+        return
+
+    dibs_tracker.add_custom_dib(interaction.user.id, item_text, qty_val)
+    await interaction.response.send_message(
+        f"✅ Custom dibs registered: **{item_text}** (Quantity: {qty_val})",
+        ephemeral=True,
+    )
+
+    await refresh_dibs_summary(interaction.guild)
+    logger.info(f"CUSTOM DIBS: {interaction.user.name} added {item_text} ({qty_val})")
+
+
+@register_dibs_tree_command(name="undibs", description="Remove one or all of your dibs")
 @app_commands.describe(item="The item to remove, or 'all' to clear all")
 @app_commands.autocomplete(item=undibs_autocomplete)
 async def undibs(interaction: discord.Interaction, item: str):
@@ -300,25 +348,22 @@ async def undibs(interaction: discord.Interaction, item: str):
                 "❌ You have no active dibs to clear.", ephemeral=True
             )
     else:
-        # Exact or fuzzy match
-        target_item = item
-        if target_item not in dibs_tracker.dibs.get(user_id, {}):
-            fuzzy_match = dibs_tracker.fuzzy_match_item(user_id, item)
-            if fuzzy_match:
-                target_item = fuzzy_match
-            else:
-                await interaction.response.send_message(
-                    f"❌ You don't have dibs on '{item}'.", ephemeral=True
-                )
-                return
+        target_item = dibs_tracker.resolve_user_dib_key(user_id, item)
+        if not target_item:
+            await interaction.response.send_message(
+                f"❌ You don't have dibs on '{item}'.", ephemeral=True
+            )
+            return
+
+        display_item = dibs_tracker.display_dib_item_name(target_item)
 
         if dibs_tracker.remove_dib(user_id, target_item):
             await interaction.response.send_message(
-                f"✅ Removed dibs on: **{target_item}**", ephemeral=True
+                f"✅ Removed dibs on: **{display_item}**", ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                f"❌ Failed to remove dibs on '{target_item}'.", ephemeral=True
+                f"❌ Failed to remove dibs on '{display_item}'.", ephemeral=True
             )
 
     # Refresh the summary
@@ -1237,10 +1282,47 @@ class DibsTracker:
             self.dibs[user_id] = {}
         self.dibs[user_id][item_name] = quantity
 
+    def add_custom_dib(self, user_id: int, item_name: str, quantity: Union[int, str]):
+        """Add or update a custom dib for a user."""
+        self.add_dib(user_id, f"{CUSTOM_DIBS_PREFIX}{item_name}", quantity)
+
+    @staticmethod
+    def display_dib_item_name(item_name: str) -> str:
+        """Convert a stored dib key into a human-readable label."""
+        if item_name.startswith(CUSTOM_DIBS_PREFIX):
+            return f"Custom: {item_name[len(CUSTOM_DIBS_PREFIX):]}"
+        return item_name
+
+    def resolve_user_dib_key(self, user_id: int, query: str) -> Optional[str]:
+        """Resolve a stored dib key from a user-visible query string."""
+        if user_id not in self.dibs:
+            return None
+
+        normalized_query = " ".join(query.split()).lower()
+        if not normalized_query:
+            return None
+
+        fuzzy_matches = []
+        for stored_item in self.dibs[user_id].keys():
+            display_item = self.display_dib_item_name(stored_item).lower()
+            stored_item_lower = stored_item.lower()
+            if normalized_query == stored_item_lower or normalized_query == display_item:
+                return stored_item
+            if normalized_query in display_item:
+                fuzzy_matches.append(stored_item)
+            elif normalized_query in stored_item_lower:
+                fuzzy_matches.append(stored_item)
+
+        if len(fuzzy_matches) == 1:
+            return fuzzy_matches[0]
+
+        return None
+
     def remove_dib(self, user_id: int, item_name: str) -> bool:
         """Remove a specific dib for a user"""
-        if user_id in self.dibs and item_name in self.dibs[user_id]:
-            del self.dibs[user_id][item_name]
+        stored_item = self.resolve_user_dib_key(user_id, item_name)
+        if user_id in self.dibs and stored_item in self.dibs[user_id]:
+            del self.dibs[user_id][stored_item]
             if not self.dibs[user_id]:
                 del self.dibs[user_id]
             return True
@@ -1347,16 +1429,9 @@ class DibsTracker:
 
     def fuzzy_match_item(self, user_id: int, query: str) -> Optional[str]:
         """Find a unique item in user's dibs that matches the query"""
-        if user_id not in self.dibs:
-            return None
-
-        user_dibs = list(self.dibs[user_id].keys())
-        query = query.lower()
-
-        matches = [item for item in user_dibs if query in item.lower()]
-
-        if len(matches) == 1:
-            return matches[0]
+        stored_item = self.resolve_user_dib_key(user_id, query)
+        if stored_item:
+            return self.display_dib_item_name(stored_item)
         return None
 
 
@@ -1473,6 +1548,9 @@ async def resolve_user_name(user_id: int, guild: Optional[discord.Guild] = None)
     return f"UnknownUser_{user_id}"
 
 
+CUSTOM_DIBS_PREFIX = "__custom__:"
+
+
 @bot.command(name='dibs_data')
 async def dibs_data_command(ctx):
     """Generate raw dibs data for export"""
@@ -1501,7 +1579,9 @@ async def dibs_data_command(ctx):
 
         for item, qty in user_dibs.items():
             qty_str = str(qty) if qty is not None else "Any"
-            output_lines.append(f"@{user_name}, {item}, {qty_str}")
+            output_lines.append(
+                f"@{user_name}, {dibs_tracker.display_dib_item_name(item)}, {qty_str}"
+            )
 
     await send_long_message(ctx, output_lines, code_block=True)
 
