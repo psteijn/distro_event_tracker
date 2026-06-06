@@ -85,7 +85,11 @@ async def refresh_dibs_summary(guild):
                 embed = message.embeds[0]
                 is_summary = embed.title == "📦 Current Dibs Summary"
                 is_data = False
-                if embed.footer and getattr(embed.footer, 'icon_url', None) and "https://dibs.data?payload=" in embed.footer.icon_url:
+                if (
+                    embed.footer
+                    and getattr(embed.footer, 'icon_url', None)
+                    and "https://dibs.data?payload=" in embed.footer.icon_url
+                ):
                     is_data = True
                 if embed.description and "http://dibs.data?payload=" in embed.description:
                     is_data = True
@@ -125,13 +129,19 @@ async def refresh_dibs_summary(guild):
         chunk_json = json.dumps(chunk)
         encoded_data = urllib.parse.quote(chunk_json)
 
-        title_str = "⚙️ System Data Block" if len(chunks) == 1 else f"⚙️ System Data Block ({i+1}/{len(chunks)})"
+        title_str = (
+            "⚙️ System Data Block"
+            if len(chunks) == 1
+            else f"⚙️ System Data Block ({i+1}/{len(chunks)})"
+        )
         data_embed = discord.Embed(
             title=title_str,
             description="This message is used for tracking bot state. **Do not delete or modify.**",
             color=0x2B2D31,  # Matches Discord Dark Mode background
         )
-        data_embed.set_footer(text="⚙️ System Metadata (Ignore)", icon_url=f"https://dibs.data?payload={encoded_data}")
+        data_embed.set_footer(
+            text="⚙️ System Metadata (Ignore)", icon_url=f"https://dibs.data?payload={encoded_data}"
+        )
         await channel.send(embed=data_embed)
 
     # 2. Send the Summary Message (Human readable view)
@@ -159,7 +169,7 @@ async def refresh_dibs_summary(guild):
             for user_id, qty in item_to_users[item]:
                 qty_str = str(qty) if qty else "Any"
                 claims.append(f"<@{user_id}> ({qty_str})")
-            
+
             claims_str = ", ".join(claims)
             lines.append(f"**{item}** | {claims_str}")
 
@@ -179,6 +189,27 @@ async def item_autocomplete(
         for item in items
         if current.lower() in item.lower()
     ][:25]
+
+
+def resolve_dibs_item_name(item: str) -> Optional[str]:
+    """Resolve a dibs item name using exact or unique fuzzy matching."""
+    normalized_item = " ".join(item.split()).lower()
+    if not normalized_item:
+        return None
+
+    exact_matches = [
+        candidate for candidate in dibs_tracker.all_items if candidate.lower() == normalized_item
+    ]
+    if exact_matches:
+        return exact_matches[0]
+
+    fuzzy_matches = [
+        candidate for candidate in dibs_tracker.all_items if normalized_item in candidate.lower()
+    ]
+    if len(fuzzy_matches) == 1:
+        return fuzzy_matches[0]
+
+    return None
 
 
 async def undibs_autocomplete(
@@ -210,7 +241,7 @@ async def undibs_autocomplete(
 @bot.tree.command(name="dibs", description="Claim dibs on an item from the distribution list")
 @app_commands.describe(item="The item you want to claim", quantity="Optional number of items")
 @app_commands.autocomplete(item=item_autocomplete)
-async def dibs(interaction: discord.Interaction, item: str, quantity: Optional[str] = None):
+async def dibs(interaction: discord.Interaction, item: str, quantity: Optional[int] = None):
     """Slash command to claim dibs"""
     if DIBS_CHANNEL_ID and str(interaction.channel_id) != DIBS_CHANNEL_ID:
         await interaction.response.send_message(
@@ -219,20 +250,22 @@ async def dibs(interaction: discord.Interaction, item: str, quantity: Optional[s
         return
 
     # Validate item
-    if item not in dibs_tracker.all_items:
-        # Try fuzzy match if not an exact match
-        matches = [i for i in dibs_tracker.all_items if item.lower() in i.lower()]
-        if len(matches) == 1:
-            item = matches[0]
-        else:
-            await interaction.response.send_message(
-                f"❌ '{item}' is not a recognized item. Please use the autocomplete suggestions.",
-                ephemeral=True,
-            )
-            return
+    resolved_item = resolve_dibs_item_name(item)
+    if resolved_item:
+        item = resolved_item
+    else:
+        await interaction.response.send_message(
+            f"❌ '{item}' is not a recognized item. Please use the autocomplete suggestions.",
+            ephemeral=True,
+        )
+        return
 
     # Process quantity
-    qty_val = quantity if quantity else "Any"
+    try:
+        qty_val = normalize_dibs_quantity(quantity)
+    except ValueError as exc:
+        await interaction.response.send_message(f"❌ {exc}", ephemeral=True)
+        return
 
     dibs_tracker.add_dib(interaction.user.id, item, qty_val)
     await interaction.response.send_message(
@@ -1257,6 +1290,7 @@ class DibsTracker:
                 if icon_url and "https://dibs.data?payload=" in icon_url:
                     try:
                         import urllib.parse
+
                         parsed_url = urllib.parse.urlparse(icon_url)
                         query_params = urllib.parse.parse_qs(parsed_url.query)
                         if "payload" in query_params:
@@ -1273,6 +1307,7 @@ class DibsTracker:
                 if embed.description and "http://dibs.data?payload=" in embed.description:
                     try:
                         import urllib.parse
+
                         start = embed.description.find("http://dibs.data?payload=")
                         end = embed.description.find(")", start)
                         if end != -1:
@@ -1326,6 +1361,15 @@ class DibsTracker:
 
 
 dibs_tracker = DibsTracker(items_csv=ITEMS_CSV)
+
+
+def normalize_dibs_quantity(quantity: Optional[int]) -> Union[int, str]:
+    """Normalize the dibs quantity for storage and display."""
+    if quantity is None:
+        return "Any"
+    if quantity < 1:
+        raise ValueError("Quantity must be a positive integer.")
+    return quantity
 
 
 def parse_timestamp(timestamp_str: str) -> datetime:
@@ -1408,6 +1452,27 @@ def multiplier_to_emoji_string(multiplier: float) -> str:
         return str(twenty_five_emoji) if twenty_five_emoji else EMOJI_TWENTY_FIVE
 
 
+async def resolve_user_name(user_id: int, guild: Optional[discord.Guild] = None) -> str:
+    """Resolve a stable username for export and display."""
+    if guild:
+        member = guild.get_member(user_id)
+        if member:
+            return member.name
+
+    user = bot.get_user(user_id)
+    if user:
+        return user.name
+
+    try:
+        fetched_user = await bot.fetch_user(user_id)
+        if fetched_user:
+            return fetched_user.name
+    except Exception:
+        pass
+
+    return f"UnknownUser_{user_id}"
+
+
 @bot.command(name='dibs_data')
 async def dibs_data_command(ctx):
     """Generate raw dibs data for export"""
@@ -1424,21 +1489,21 @@ async def dibs_data_command(ctx):
         return
 
     output_lines = []
-    # Sort by username for readability
-    sorted_users = sorted(
-        dibs_tracker.dibs.items(),
-        key=lambda x: bot.get_user(x[0]).name if bot.get_user(x[0]) else str(x[0]),
-    )
+    sorted_user_ids = sorted(dibs_tracker.dibs.keys(), key=lambda uid: str(uid))
 
-    for user_id, user_dibs in sorted_users:
-        user = bot.get_user(user_id)
-        user_name = user.name if user else f"UnknownUser_{user_id}"
+    resolved_users = []
+    for user_id in sorted_user_ids:
+        user_name = await resolve_user_name(user_id, getattr(ctx, "guild", None))
+        resolved_users.append((user_name, user_id))
+
+    for user_name, user_id in sorted(resolved_users, key=lambda item: item[0].lower()):
+        user_dibs = dibs_tracker.dibs[user_id]
 
         for item, qty in user_dibs.items():
-            qty_str = str(qty) if qty else "all"
-            output_lines.append(f"[{user_name}] {item}: {qty_str}")
+            qty_str = str(qty) if qty is not None else "Any"
+            output_lines.append(f"@{user_name}, {item}, {qty_str}")
 
-    await send_long_message(ctx, output_lines)
+    await send_long_message(ctx, output_lines, code_block=True)
 
 
 @bot.event

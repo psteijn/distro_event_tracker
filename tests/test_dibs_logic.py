@@ -1,6 +1,11 @@
 import pytest
 import csv
-from main import DibsTracker
+import main
+from main import (
+    DibsTracker,
+    normalize_dibs_quantity,
+    resolve_dibs_item_name,
+)
 
 
 @pytest.fixture
@@ -28,6 +33,25 @@ def test_add_dib():
     # Update quantity
     tracker.add_dib(123, "Command Aspect Core", 10)
     assert tracker.dibs[123]["Command Aspect Core"] == 10
+
+
+def test_normalize_dibs_quantity():
+    assert normalize_dibs_quantity(None) == "Any"
+    assert normalize_dibs_quantity(1) == 1
+    assert normalize_dibs_quantity(7) == 7
+
+
+def test_normalize_dibs_quantity_rejects_non_positive_values():
+    with pytest.raises(ValueError, match="positive integer"):
+        normalize_dibs_quantity(0)
+    with pytest.raises(ValueError, match="positive integer"):
+        normalize_dibs_quantity(-3)
+
+
+def test_resolve_dibs_item_name_matches_case_insensitively(monkeypatch):
+    monkeypatch.setattr(main.dibs_tracker, "all_items", ["Command Aspect Core"])
+
+    assert resolve_dibs_item_name("command aspect core") == "Command Aspect Core"
 
 
 def test_remove_dib():
@@ -270,4 +294,3 @@ async def test_reconstruct_from_history_icon_url():
     await new_tracker.reconstruct_from_history(MockBot())
 
     assert new_tracker.dibs[555]["Air Aspect Core"] == 3
-
