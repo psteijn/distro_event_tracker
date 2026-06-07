@@ -24,10 +24,11 @@ async def test_custom_dibs_command_stores_prefixed_entry_and_refreshes(monkeypat
     monkeypatch.setattr(main, "DIBS_CHANNEL_ID", "123")
     main.dibs_tracker.dibs.clear()
 
-    refreshed = {"called": False}
+    refreshed = {"called": False, "reason": None}
 
-    async def fake_refresh(guild):
+    async def fake_refresh(guild, *, reason=None, actor=None, details=None):
         refreshed["called"] = True
+        refreshed["reason"] = reason
 
     monkeypatch.setattr(main, "refresh_dibs_summary", fake_refresh)
 
@@ -37,5 +38,6 @@ async def test_custom_dibs_command_stores_prefixed_entry_and_refreshes(monkeypat
 
     assert main.dibs_tracker.dibs[interaction.user.id]["__custom__:Manual review note"] == 4
     assert refreshed["called"] is True
+    assert refreshed["reason"] == "custom_dibs_command"
     assert interaction.response.messages[0]["ephemeral"] is True
     assert "Custom dibs registered" in interaction.response.messages[0]["content"]

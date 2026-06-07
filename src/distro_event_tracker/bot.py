@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import inspect
 import json
 import logging
 import os
@@ -88,17 +89,46 @@ def register_dibs_tree_command(*args, **kwargs):
     return decorator
 
 
-async def refresh_dibs_summary(guild):
-    """Refreshes the dibs summary message in the designated channel"""
+def _count_total_dibs_entries() -> int:
+    return sum(len(user_dibs) for user_dibs in dibs_tracker.dibs.values())
+
+
+async def refresh_dibs_summary(
+    guild,
+    *,
+    reason: Optional[str] = None,
+    actor: Optional[str] = None,
+    details: Optional[dict] = None,
+):
+    """Refreshes the dibs summary message in the designated channel."""
+    caller_frame = inspect.stack()[1]
+    caller = (
+        f"{os.path.basename(caller_frame.filename)}:{caller_frame.function}:{caller_frame.lineno}"
+    )
+    refresh_reason = reason or "unspecified"
+    logger.info(
+        "DIBS SUMMARY REFRESH START reason=%s actor=%s caller=%s state=%s details=%s",
+        refresh_reason,
+        actor or "unknown",
+        caller,
+        {"users": len(dibs_tracker.dibs), "entries": _count_total_dibs_entries()},
+        details or {},
+    )
     if not DIBS_CHANNEL_ID:
+        logger.info("DIBS SUMMARY REFRESH SKIPPED reason=no_dibs_channel_configured")
         return
 
     channel = bot.get_channel(int(DIBS_CHANNEL_ID))
     if not channel:
-        logger.error(f"❌ Dibs channel {DIBS_CHANNEL_ID} not found for summary refresh")
+        logger.error(
+            "DIBS SUMMARY REFRESH FAILED reason=channel_not_found dibs_channel_id=%s",
+            DIBS_CHANNEL_ID,
+        )
         return
 
     # Delete old summary and data messages
+    deleted_summary_messages = 0
+    deleted_data_messages = 0
     try:
         async for message in channel.history(limit=50):
             if message.author == bot.user and message.embeds:
@@ -120,6 +150,10 @@ async def refresh_dibs_summary(guild):
 
                 if is_summary or is_data:
                     await message.delete()
+                    if is_summary:
+                        deleted_summary_messages += 1
+                    if is_data:
+                        deleted_data_messages += 1
     except Exception as e:
         logger.error(f"❌ Error deleting old dibs summary: {e}")
 
@@ -144,6 +178,15 @@ async def refresh_dibs_summary(guild):
 
     if current_chunk or not chunks:
         chunks.append(current_chunk)
+
+    logger.info(
+        "DIBS SUMMARY REFRESH REBUILD reason=%s channel_id=%s deleted_summary_messages=%s deleted_data_messages=%s data_chunks=%s",
+        refresh_reason,
+        channel.id,
+        deleted_summary_messages,
+        deleted_data_messages,
+        len(chunks),
+    )
 
     for i, chunk in enumerate(chunks):
         chunk_json = json.dumps(chunk)
@@ -197,6 +240,13 @@ async def refresh_dibs_summary(guild):
 
     summary_embed.timestamp = datetime.now(PACIFIC_TZ)
     await channel.send(embed=summary_embed)
+    logger.info(
+        "DIBS SUMMARY REFRESH COMPLETE reason=%s channel_id=%s users=%s entries=%s",
+        refresh_reason,
+        channel.id,
+        len(dibs_tracker.dibs),
+        _count_total_dibs_entries(),
+    )
 
 
 async def item_autocomplete(
@@ -295,7 +345,12 @@ async def dibs(interaction: discord.Interaction, item: str, quantity: Optional[i
     )
 
     # Refresh the summary
-    await refresh_dibs_summary(interaction.guild)
+    await refresh_dibs_summary(
+        interaction.guild,
+        reason="dibs_command",
+        actor=str(interaction.user.id),
+        details={"item": item, "quantity": qty_val},
+    )
     logger.info(f"DIBS: {interaction.user.name} added {item} ({qty_val})")
 
 
@@ -330,7 +385,12 @@ async def custom_dibs(interaction: discord.Interaction, text: str, quantity: Opt
         ephemeral=True,
     )
 
-    await refresh_dibs_summary(interaction.guild)
+    await refresh_dibs_summary(
+        interaction.guild,
+        reason="custom_dibs_command",
+        actor=str(interaction.user.id),
+        details={"text": item_text, "quantity": qty_val},
+    )
     logger.info(f"CUSTOM DIBS: {interaction.user.name} added {item_text} ({qty_val})")
 
 
@@ -376,7 +436,12 @@ async def undibs(interaction: discord.Interaction, item: str):
             )
 
     # Refresh the summary
-    await refresh_dibs_summary(interaction.guild)
+    await refresh_dibs_summary(
+        interaction.guild,
+        reason="undibs_command",
+        actor=str(interaction.user.id),
+        details={"item": item},
+    )
     logger.info(f"UNDIBS: {interaction.user.name} removed {item}")
 
 
