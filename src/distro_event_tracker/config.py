@@ -32,7 +32,7 @@ def validate_event_command_name(name: str) -> str:
     return name
 
 
-EVENT_COMMAND_NAME = validate_event_command_name(os.getenv('EVENT_COMMAND_NAME', 'distro'))
+EVENT_COMMAND_NAME = validate_event_command_name(os.getenv('EVENT_COMMAND_NAME', 'event'))
 DIBS_CHANNEL_ID = os.getenv('DIBS_CHANNEL_ID')
 ITEMS_CSV = os.getenv('ITEMS_CSV', 'items.csv')
 REMINDER_OPT_OUT_FILE = os.getenv('REMINDER_OPT_OUT_FILE', 'reminders_opt_out.txt')

@@ -67,7 +67,7 @@ The bot includes convenience scripts for different environments:
 If you want to run two different bots (e.g., for different guilds or purposes):
 1. Create `.env.distro` and `.env.ocean`.
 2. Give each instance its own event channel and slash command name:
-   - `.env.distro`: `EVENT_CHANNEL_ID=<distro-channel-id>` and `EVENT_COMMAND_NAME=distro`
+   - `.env.distro`: `EVENT_CHANNEL_ID=<distro-channel-id>` and `EVENT_COMMAND_NAME=event`
    - `.env.ocean`: `EVENT_CHANNEL_ID=<ocean-channel-id>` and `EVENT_COMMAND_NAME=ocean`
 3. Run `start_distro.bat` or `start_ocean.bat`.
 *These scripts automatically load their respective environment files and log to separate files.*
@@ -91,7 +91,7 @@ If the bot is running as a Windows Scheduled Task, you can use the deployment sc
 | `!omniboss <name>` | 8.0x | 👑 | Massive guild event (8x Points). |
 
 You can also create any event with the configured event slash command, such as
-`/distro type:<type> name:<name>` or `/ocean type:<type> name:<name>`. Discord requires
+`/event type:<type> name:<name>` or `/ocean type:<type> name:<name>`. Discord requires
 both options before the command can be submitted, and each command only works in its
 bot instance's configured event channel.
 

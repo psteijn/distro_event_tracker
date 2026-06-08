@@ -32,13 +32,13 @@ class EventCog(commands.Cog, name="Events"):
     def __init__(
         self,
         runtime,
-        event_command_name: str = "distro",
+        event_command_name: str = "event",
         event_channel_id: str | None = None,
     ):
         self.runtime = runtime
         self.event_command_name = event_command_name
         self.event_channel_id = event_channel_id
-        self.distro.name = event_command_name
+        self.event.name = event_command_name
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
@@ -68,18 +68,18 @@ class EventCog(commands.Cog, name="Events"):
     async def omniboss(self, ctx, *, omniboss_name: str):
         await _call(self.runtime.omniboss, ctx, omniboss_name=omniboss_name)
 
-    @app_commands.command(name="distro", description="Create a new tracked event")
+    @app_commands.command(name="event", description="Create a new tracked event")
     @app_commands.describe(type="The kind of event to create", name="The event name")
     @app_commands.choices(
         type=[
-            app_commands.Choice(name="Dungeon (1x)", value="dungeon"),
-            app_commands.Choice(name="Miniboss (1x)", value="miniboss"),
-            app_commands.Choice(name="Boss (2x)", value="boss"),
-            app_commands.Choice(name="T8 (1x)", value="t8"),
-            app_commands.Choice(name="Omniboss (8x)", value="omniboss"),
+            app_commands.Choice(name="Dungeon", value="dungeon"),
+            app_commands.Choice(name="Miniboss", value="miniboss"),
+            app_commands.Choice(name="Boss", value="boss"),
+            app_commands.Choice(name="T8", value="t8"),
+            app_commands.Choice(name="Omniboss", value="omniboss"),
         ]
     )
-    async def distro(
+    async def event(
         self,
         interaction: discord.Interaction,
         type: str,

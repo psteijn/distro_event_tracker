@@ -8,7 +8,7 @@ DISCORD_TOKEN=your_bot_token_here
 # EVENT_CHANNEL_ID=1511987020472520806
 
 # Optional: Customize the event creation slash command for this bot instance
-# EVENT_COMMAND_NAME=distro
+# EVENT_COMMAND_NAME=event
 
 # DIBS_CHANNEL_ID=1511987020472520806
 # ITEMS_CSV=items.csv

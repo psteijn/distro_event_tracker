@@ -39,20 +39,20 @@ class MockRuntime:
         return command
 
 
-async def invoke_distro(cog, interaction, event_type, name):
-    await cog.distro.callback(cog, interaction, event_type, name)
+async def invoke_event(cog, interaction, event_type, name):
+    await cog.event.callback(cog, interaction, event_type, name)
 
 
-def test_distro_requires_valid_type_and_name_options():
-    parameters = {parameter.name: parameter for parameter in EventCog.distro.parameters}
+def test_event_requires_valid_type_and_name_options():
+    parameters = {parameter.name: parameter for parameter in EventCog.event.parameters}
 
     assert parameters["type"].required is True
     assert [(choice.name, choice.value) for choice in parameters["type"].choices] == [
-        ("Dungeon (1x)", "dungeon"),
-        ("Miniboss (1x)", "miniboss"),
-        ("Boss (2x)", "boss"),
-        ("T8 (1x)", "t8"),
-        ("Omniboss (8x)", "omniboss"),
+        ("Dungeon", "dungeon"),
+        ("Miniboss", "miniboss"),
+        ("Boss", "boss"),
+        ("T8", "t8"),
+        ("Omniboss", "omniboss"),
     ]
     assert parameters["name"].required is True
     assert parameters["name"].min_value == 1
@@ -70,12 +70,12 @@ def test_distro_requires_valid_type_and_name_options():
         ("omniboss", "omniboss", "omniboss_name"),
     ],
 )
-async def test_distro_dispatches_valid_event_types(event_type, command_name, name_parameter):
+async def test_event_dispatches_valid_event_types(event_type, command_name, name_parameter):
     runtime = MockRuntime()
     cog = EventCog(runtime)
     interaction = MockInteraction()
 
-    await invoke_distro(cog, interaction, event_type, "  Event Name  ")
+    await invoke_event(cog, interaction, event_type, "  Event Name  ")
 
     called_command, ctx, kwargs = runtime.calls[0]
     assert called_command == command_name
@@ -97,12 +97,12 @@ async def test_distro_dispatches_valid_event_types(event_type, command_name, nam
         ("boss", "x" * 201),
     ],
 )
-async def test_distro_rejects_invalid_values_without_creating_event(event_type, name):
+async def test_event_rejects_invalid_values_without_creating_event(event_type, name):
     runtime = MockRuntime()
     cog = EventCog(runtime)
     interaction = MockInteraction()
 
-    await invoke_distro(cog, interaction, event_type, name)
+    await invoke_event(cog, interaction, event_type, name)
 
     assert runtime.calls == []
     assert interaction.response.messages == [
@@ -118,7 +118,7 @@ async def test_distro_rejects_invalid_values_without_creating_event(event_type, 
 
 
 @pytest.mark.asyncio
-async def test_distro_context_sends_public_event_and_returns_created_message():
+async def test_event_context_sends_public_event_and_returns_created_message():
     runtime = MockRuntime()
 
     async def boss(ctx, **kwargs):
@@ -129,7 +129,7 @@ async def test_distro_context_sends_public_event_and_returns_created_message():
     cog = EventCog(runtime)
     interaction = MockInteraction()
 
-    await invoke_distro(cog, interaction, "boss", "Event Name")
+    await invoke_event(cog, interaction, "boss", "Event Name")
 
     assert interaction.response.messages == [
         {"content": None, "embed": "event embed", "ephemeral": False}
@@ -138,12 +138,12 @@ async def test_distro_context_sends_public_event_and_returns_created_message():
 
 
 @pytest.mark.asyncio
-async def test_distro_rejects_wrong_channel_without_creating_event():
+async def test_event_rejects_wrong_channel_without_creating_event():
     runtime = MockRuntime()
     cog = EventCog(runtime, "ocean", "123456")
     interaction = MockInteraction()
 
-    await invoke_distro(cog, interaction, "boss", "Event Name")
+    await invoke_event(cog, interaction, "boss", "Event Name")
 
     assert runtime.calls == []
     assert interaction.response.messages == [

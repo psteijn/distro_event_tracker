@@ -3,7 +3,7 @@ import pytest
 from distro_event_tracker.config import validate_event_command_name
 
 
-@pytest.mark.parametrize("name", ["distro", "ocean", "ocean-distro", "ocean_distro", "distro2"])
+@pytest.mark.parametrize("name", ["event", "ocean", "ocean-distro", "ocean_distro", "event2"])
 def test_validate_event_command_name_accepts_valid_names(name):
     assert validate_event_command_name(name) == name
 

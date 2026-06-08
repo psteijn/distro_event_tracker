@@ -9,7 +9,7 @@ async def install_cogs(
     target_bot: commands.Bot,
     runtime: ModuleType,
     dibs_channel_id: str | None,
-    event_command_name: str = "distro",
+    event_command_name: str = "event",
     event_channel_id: str | None = None,
 ) -> None:
     """Replace compatibility registrations with feature-owned Cogs."""

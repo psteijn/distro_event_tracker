@@ -9,7 +9,7 @@ async def test_install_cogs_registers_feature_commands(monkeypatch):
     monkeypatch.setattr(runtime, "DIBS_CHANNEL_ID", "123")
     test_bot = runtime.EventBot(command_prefix="!", intents=runtime.intents)
 
-    await install_cogs(test_bot, runtime, runtime.DIBS_CHANNEL_ID, "distro", "456")
+    await install_cogs(test_bot, runtime, runtime.DIBS_CHANNEL_ID, "event", "456")
 
     assert set(test_bot.cogs) == {"Events", "Dibs"}
     assert test_bot.get_command("summary").cog_name == "Events"
@@ -35,7 +35,7 @@ async def test_install_cogs_registers_feature_commands(monkeypatch):
     assert {command.name for command in test_bot.tree.get_commands()} == {
         "custom_dibs",
         "dibs",
-        "distro",
+        "event",
         "undibs",
     }
     await test_bot.close()
@@ -46,10 +46,10 @@ async def test_install_cogs_hides_slash_dibs_without_channel(monkeypatch):
     monkeypatch.setattr(runtime, "DIBS_CHANNEL_ID", "")
     test_bot = runtime.EventBot(command_prefix="!", intents=runtime.intents)
 
-    await install_cogs(test_bot, runtime, runtime.DIBS_CHANNEL_ID, "distro", "456")
+    await install_cogs(test_bot, runtime, runtime.DIBS_CHANNEL_ID, "event", "456")
 
     assert test_bot.get_command("dibs_data").cog_name == "Dibs"
-    assert {command.name for command in test_bot.tree.get_commands()} == {"distro"}
+    assert {command.name for command in test_bot.tree.get_commands()} == {"event"}
     await test_bot.close()
 
 
@@ -61,5 +61,5 @@ async def test_install_cogs_registers_configured_event_command_name(monkeypatch)
     await install_cogs(test_bot, runtime, runtime.DIBS_CHANNEL_ID, "ocean", "789")
 
     assert {command.name for command in test_bot.tree.get_commands()} == {"ocean"}
-    assert test_bot.tree.get_command("distro") is None
+    assert test_bot.tree.get_command("event") is None
     await test_bot.close()
