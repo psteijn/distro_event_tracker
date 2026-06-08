@@ -1,6 +1,9 @@
 """Discord adapters for the event tracking feature."""
 
+from types import SimpleNamespace
+
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 
@@ -9,11 +12,33 @@ async def _call(command, *args, **kwargs):
     return await callback(*args, **kwargs)
 
 
+class _InteractionEventContext:
+    """Expose the context surface used by the existing event creation callbacks."""
+
+    def __init__(self, interaction: discord.Interaction):
+        self.interaction = interaction
+        self.author = interaction.user
+        self.channel = interaction.channel or SimpleNamespace(id=interaction.channel_id)
+        self.message = SimpleNamespace(id=interaction.id, created_at=interaction.created_at)
+
+    async def send(self, content=None, *, embed=None):
+        await self.interaction.response.send_message(content, embed=embed)
+        return await self.interaction.original_response()
+
+
 class EventCog(commands.Cog, name="Events"):
     """Prefix commands and listeners owned by event tracking."""
 
-    def __init__(self, runtime):
+    def __init__(
+        self,
+        runtime,
+        event_command_name: str = "distro",
+        event_channel_id: str | None = None,
+    ):
         self.runtime = runtime
+        self.event_command_name = event_command_name
+        self.event_channel_id = event_channel_id
+        self.distro.name = event_command_name
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
@@ -42,6 +67,54 @@ class EventCog(commands.Cog, name="Events"):
     @commands.command(name="omniboss", aliases=["omni"])
     async def omniboss(self, ctx, *, omniboss_name: str):
         await _call(self.runtime.omniboss, ctx, omniboss_name=omniboss_name)
+
+    @app_commands.command(name="distro", description="Create a new tracked event")
+    @app_commands.describe(type="The kind of event to create", name="The event name")
+    @app_commands.choices(
+        type=[
+            app_commands.Choice(name="Dungeon (1x)", value="dungeon"),
+            app_commands.Choice(name="Miniboss (1x)", value="miniboss"),
+            app_commands.Choice(name="Boss (2x)", value="boss"),
+            app_commands.Choice(name="T8 (1x)", value="t8"),
+            app_commands.Choice(name="Omniboss (8x)", value="omniboss"),
+        ]
+    )
+    async def distro(
+        self,
+        interaction: discord.Interaction,
+        type: str,
+        name: app_commands.Range[str, 1, 200],
+    ):
+        if self.event_channel_id and str(interaction.channel_id) != self.event_channel_id:
+            await interaction.response.send_message(
+                f"`/{self.event_command_name}` can only be used in the designated event channel.",
+                ephemeral=True,
+            )
+            return
+
+        event_name = name.strip() if name else ""
+        event_commands = {
+            "dungeon": (self.runtime.dungeon, "dungeon_name"),
+            "miniboss": (self.runtime.miniboss, "miniboss_name"),
+            "boss": (self.runtime.boss, "boss_name"),
+            "t8": (self.runtime.t8, "t8_name"),
+            "omniboss": (self.runtime.omniboss, "omniboss_name"),
+        }
+
+        if type not in event_commands or not event_name or len(event_name) > 200:
+            await interaction.response.send_message(
+                "Please provide both a valid event type and an event name between 1 and 200 "
+                "characters.",
+                ephemeral=True,
+            )
+            return
+
+        command, name_parameter = event_commands[type]
+        await _call(
+            command,
+            _InteractionEventContext(interaction),
+            **{name_parameter: event_name},
+        )
 
     @commands.command(name="add_users")
     async def add_users(self, ctx, event_id: str, multiplier: float, *members: discord.Member):

@@ -24,6 +24,7 @@ from .config import (
     EMOJI_SEVENTY_FIVE,
     EMOJI_TWENTY_FIVE,
     EVENT_CHANNEL_ID,
+    EVENT_COMMAND_NAME,
     ITEMS_CSV,
     REMINDER_OPT_OUT_FILE,
 )
@@ -62,7 +63,13 @@ class EventBot(commands.Bot):
     async def setup_hook(self):
         from .bootstrap import install_cogs
 
-        await install_cogs(self, sys.modules[__name__], DIBS_CHANNEL_ID)
+        await install_cogs(
+            self,
+            sys.modules[__name__],
+            DIBS_CHANNEL_ID,
+            EVENT_COMMAND_NAME,
+            EVENT_CHANNEL_ID,
+        )
 
         # Sync the tree globally to make slash commands appear everywhere
         try:
@@ -98,6 +105,7 @@ async def refresh_dibs_summary(
     *,
     reason: Optional[str] = None,
     actor: Optional[str] = None,
+    actor_name: Optional[str] = None,
     details: Optional[dict] = None,
 ):
     """Refreshes the dibs summary message in the designated channel."""
@@ -107,9 +115,10 @@ async def refresh_dibs_summary(
     )
     refresh_reason = reason or "unspecified"
     logger.info(
-        "DIBS SUMMARY REFRESH START reason=%s actor=%s caller=%s state=%s details=%s",
+        "DIBS SUMMARY REFRESH START reason=%s actor=%s actor_name=%s caller=%s state=%s details=%s",
         refresh_reason,
         actor or "unknown",
+        actor_name or "unknown",
         caller,
         {"users": len(dibs_tracker.dibs), "entries": _count_total_dibs_entries()},
         details or {},
@@ -349,6 +358,7 @@ async def dibs(interaction: discord.Interaction, item: str, quantity: Optional[i
         interaction.guild,
         reason="dibs_command",
         actor=str(interaction.user.id),
+        actor_name=interaction.user.name,
         details={"item": item, "quantity": qty_val},
     )
     logger.info(f"DIBS: {interaction.user.name} added {item} ({qty_val})")
@@ -389,6 +399,7 @@ async def custom_dibs(interaction: discord.Interaction, text: str, quantity: Opt
         interaction.guild,
         reason="custom_dibs_command",
         actor=str(interaction.user.id),
+        actor_name=interaction.user.name,
         details={"text": item_text, "quantity": qty_val},
     )
     logger.info(f"CUSTOM DIBS: {interaction.user.name} added {item_text} ({qty_val})")
@@ -440,6 +451,7 @@ async def undibs(interaction: discord.Interaction, item: str):
         interaction.guild,
         reason="undibs_command",
         actor=str(interaction.user.id),
+        actor_name=interaction.user.name,
         details={"item": item},
     )
     logger.info(f"UNDIBS: {interaction.user.name} removed {item}")

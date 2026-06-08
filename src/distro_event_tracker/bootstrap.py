@@ -6,7 +6,11 @@ from discord.ext import commands
 
 
 async def install_cogs(
-    target_bot: commands.Bot, runtime: ModuleType, dibs_channel_id: str | None
+    target_bot: commands.Bot,
+    runtime: ModuleType,
+    dibs_channel_id: str | None,
+    event_command_name: str = "distro",
+    event_channel_id: str | None = None,
 ) -> None:
     """Replace compatibility registrations with feature-owned Cogs."""
     from .dibs.cog import DibsCog
@@ -23,7 +27,7 @@ async def install_cogs(
     target_bot.__dict__.pop("on_reaction_add", None)
     target_bot.__dict__.pop("on_reaction_remove", None)
 
-    await target_bot.add_cog(EventCog(runtime))
+    await target_bot.add_cog(EventCog(runtime, event_command_name, event_channel_id))
     await target_bot.add_cog(DibsCog(runtime))
 
     if not dibs_channel_id:

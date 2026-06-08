@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +19,20 @@ ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADMIN_IDS', '').split(',') if 
 # Bot Settings
 BOT_PREFIX = '!'
 EVENT_CHANNEL_ID = os.getenv('EVENT_CHANNEL_ID')
+EVENT_COMMAND_NAME_PATTERN = re.compile(r"[a-z0-9_-]{1,32}")
+
+
+def validate_event_command_name(name: str) -> str:
+    """Validate a configured Discord slash-command name."""
+    if not EVENT_COMMAND_NAME_PATTERN.fullmatch(name):
+        raise ValueError(
+            "EVENT_COMMAND_NAME must be 1-32 characters using only lowercase letters, "
+            "numbers, hyphens, or underscores."
+        )
+    return name
+
+
+EVENT_COMMAND_NAME = validate_event_command_name(os.getenv('EVENT_COMMAND_NAME', 'distro'))
 DIBS_CHANNEL_ID = os.getenv('DIBS_CHANNEL_ID')
 ITEMS_CSV = os.getenv('ITEMS_CSV', 'items.csv')
 REMINDER_OPT_OUT_FILE = os.getenv('REMINDER_OPT_OUT_FILE', 'reminders_opt_out.txt')
@@ -38,6 +53,7 @@ class Settings:
     discord_token: str | None
     bot_prefix: str
     event_channel_id: str | None
+    event_command_name: str
     dibs_channel_id: str | None
     items_csv: Path
     reminder_opt_out_file: Path
@@ -50,6 +66,7 @@ def load_settings() -> Settings:
         discord_token=DISCORD_TOKEN,
         bot_prefix=BOT_PREFIX,
         event_channel_id=EVENT_CHANNEL_ID,
+        event_command_name=EVENT_COMMAND_NAME,
         dibs_channel_id=DIBS_CHANNEL_ID,
         items_csv=Path(ITEMS_CSV),
         reminder_opt_out_file=Path(REMINDER_OPT_OUT_FILE),
