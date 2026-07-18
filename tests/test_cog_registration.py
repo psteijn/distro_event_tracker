@@ -21,6 +21,8 @@ async def test_install_cogs_registers_feature_commands(monkeypatch):
         "data",
         "delete_event",
         "dibs_data",
+        "admin_undibs",
+        "help_dibs",
         "dungeon",
         "help",
         "help_events",
@@ -29,6 +31,7 @@ async def test_install_cogs_registers_feature_commands(monkeypatch):
         "omniboss",
         "reminders",
         "rename",
+        "reset_dibs",
         "summary",
         "t8",
     }
