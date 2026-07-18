@@ -234,16 +234,29 @@ async def refresh_dibs_summary(
                     item_to_users[item] = []
                 item_to_users[item].append((user_id, qty))
 
-        # Build list lines
-        lines = []
-        for item in sorted(item_to_users.keys()):
+        def format_claim_line(item: str, *, custom: bool = False) -> str:
             claims = []
             for user_id, qty in item_to_users[item]:
                 qty_str = str(qty) if qty else "Any"
                 claims.append(f"<@{user_id}> ({qty_str})")
 
             claims_str = ", ".join(claims)
-            lines.append(f"**{DibsTracker.display_dib_item_name(item)}** | {claims_str}")
+            display_item = (
+                item[len(CUSTOM_DIBS_PREFIX) :]
+                if custom
+                else DibsTracker.display_dib_item_name(item)
+            )
+            return f"**{display_item}** | {claims_str}"
+
+        standard_items = sorted(
+            item for item in item_to_users if not item.startswith(CUSTOM_DIBS_PREFIX)
+        )
+        custom_items = sorted(item for item in item_to_users if item.startswith(CUSTOM_DIBS_PREFIX))
+
+        lines = [format_claim_line(item) for item in standard_items]
+        if custom_items:
+            lines.extend(["", "**Custom Dibs**"])
+            lines.extend(format_claim_line(item, custom=True) for item in custom_items)
 
         summary_embed.description = "\n".join(lines)
 

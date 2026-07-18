@@ -6,6 +6,7 @@ from distro_event_tracker import bot as main
 
 @pytest.mark.asyncio
 async def test_dibs_data_uses_resolved_usernames_and_requested_format(monkeypatch):
+    monkeypatch.setattr(main, "DIBS_CHANNEL_ID", "")
     main.dibs_tracker.dibs = {
         111: {"Shadow Aspect Core": 10},
         222: {"Fortune Aspect Core": "Any", "blood phylactery": 2},
