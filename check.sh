@@ -1,12 +1,18 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-source "${BASH_SOURCE[0]%/*}/init.sh"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON="$ROOT_DIR/.venv/bin/python"
 
-python -m pip install -q -r requirements-dev.txt
-python -m black --check src tests
-python -m ruff check src tests
-python -m mypy
-export PYTHONPATH="${BASH_SOURCE[0]%/*}/src"
-lint-imports
-python -m pytest --cov=distro_event_tracker --cov-report=term-missing tests
+if [[ ! -x "$PYTHON" ]]; then
+  python3 -m venv "$ROOT_DIR/.venv"
+fi
+
+"$PYTHON" -m pip install --disable-pip-version-check -q -e "$ROOT_DIR[dev]"
+cd "$ROOT_DIR"
+export PYTHONPATH="$ROOT_DIR/src"
+"$PYTHON" -m black --check src tests
+"$PYTHON" -m ruff check src tests
+"$PYTHON" -m mypy
+"$ROOT_DIR/.venv/bin/lint-imports"
+"$PYTHON" -m pytest --cov=distro_event_tracker --cov-report=term-missing tests

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Operate Event Tracker"
+  short_description: "Inspect and operate remote Discord bots"
+  default_prompt: "Use $operate-event-tracker to check the production Discord bots and diagnose any issues."

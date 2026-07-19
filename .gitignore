@@ -1,6 +1,8 @@
 # Environment variables and local configs
 .env*
 !env_example.txt
+!.env.distro.example
+!.env.ocean.example
 reminders_opt_out_*.txt
 reminders_opt_out.txt
 
@@ -11,6 +13,7 @@ ocean_distro_task_log.txt
 
 # Virtual environment
 venv/
+.venv/
 env/
 ENV/
 

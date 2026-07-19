@@ -1,0 +1,64 @@
+name: Deployment assets
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install development dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Validate project skills
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          import yaml
+
+          for skill_file in Path(".agents/skills").glob("*/SKILL.md"):
+              text = skill_file.read_text(encoding="utf-8")
+              match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+              assert match, f"Missing frontmatter: {skill_file}"
+              metadata = yaml.safe_load(match.group(1))
+              assert set(metadata) == {"name", "description"}, skill_file
+              assert metadata["name"] == skill_file.parent.name, skill_file
+              interface = skill_file.parent / "agents" / "openai.yaml"
+              if interface.exists():
+                  yaml.safe_load(interface.read_text(encoding="utf-8"))
+
+      - name: Verify release archive exclusions
+        shell: bash
+        run: |
+          git archive --format=tar HEAD > release.tar
+          tar -tf release.tar > release-files.txt
+          ! grep -E '(^|/)(\.env|\.env\.distro|\.env\.ocean|venv|\.venv|reminders_opt_out.*\.txt|.*\.log)$' release-files.txt
+
+      - name: Build and inspect container
+        run: docker build --build-arg VCS_REF=${{ github.sha }} -t distro-event-tracker:test .
+
+      - name: Smoke-test container contents
+        run: |
+          docker run --rm --entrypoint python distro-event-tracker:test -c "from distro_event_tracker.health import HealthServer; from distro_event_tracker.config import load_settings; assert load_settings().discord_token is None"
+          docker run --rm --entrypoint sh distro-event-tracker:test -c "test ! -e /app/reminders_opt_out.txt && test ! -e /app/.env && test ! -e /app/bot.log"
+
+      - uses: azure/setup-kubectl@v4
+
+      - name: Render and validate Kubernetes manifests
+        shell: bash
+        run: |
+          cp -R ops/k8s rendered-k8s
+          sed -i -e 's/RELEASE_TAG/git-0123456789ab/g' -e 's/RELEASE_SHA/0123456789abcdef0123456789abcdef01234567/g' rendered-k8s/deployments.yaml
+          kubectl kustomize rendered-k8s > rendered.yaml
+          kubectl apply --dry-run=client -f rendered.yaml

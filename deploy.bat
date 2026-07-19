@@ -1,3 +1,3 @@
 @echo off
-echo Running deployment script...
-powershell.exe -ExecutionPolicy Bypass -File ".\deploy.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy.ps1" %*
+exit /b %ERRORLEVEL%

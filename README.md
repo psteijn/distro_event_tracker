@@ -40,16 +40,25 @@ A robust Discord bot for tracking gaming events and attendance through custom em
    - `Add Reactions`
 9. Copy the generated URL at the bottom and paste it into your browser to invite the bot to your server.
 
-### 2. Installation
+### 2. Local Windows development
 Clone the repository and enter the directory:
 ```bash
 git clone https://github.com/psteijn/distro_event_tracker.git
 cd distro_event_tracker
 ```
 
+Create the isolated development environment and run all checks:
+
+```powershell
+.\bootstrap-dev.ps1
+.\check.bat
+```
+
+The check suite does not require Discord credentials or an `.env` file.
+
 ### 3. Configuration
 The bot uses `.env` files for configuration. 
-1. Copy `env_example.txt` to `.env`.
+1. Copy `env_example.txt` to `.env`, or use `.env.distro.example` and `.env.ocean.example` for the two production-shaped local instances.
 2. Fill in your `DISCORD_TOKEN` and `EVENT_CHANNEL_ID`.
 
 **Customizing Multipliers & Emojis:**
@@ -72,10 +81,23 @@ If you want to run two different bots (e.g., for different guilds or purposes):
 3. Run `start_distro.bat` or `start_ocean.bat`.
 *These scripts automatically load their respective environment files and log to separate files.*
 
-#### **Automated Deployment (Windows Task Scheduler):**
-If the bot is running as a Windows Scheduled Task, you can use the deployment scripts to automatically restart the tasks with the latest code:
-- Run `deploy.bat` (requires PowerShell permissions to stop/start tasks).
-*This script restarts both `DistroEventTracker` and `OceanDistroEventTracker` tasks.*
+#### **Ubuntu MicroK8s deployment from Windows:**
+
+Production source is packaged from the clean Windows Git checkout and sent to the SSH alias
+`steijnserver`. Ubuntu does not contain a Git checkout or the originating env files.
+
+```powershell
+.\deploy.ps1 -DryRun             # preview the Kubernetes diff
+.\deploy.ps1                     # deploy clean HEAD == origin/main
+.\deploy.ps1 -SyncSecrets        # explicitly synchronize env files and deploy
+.\deploy.ps1 -SecretsOnly        # rotate configuration and restart both bots
+.\deploy.ps1 -Rollback <full-sha>
+.\ops\remote-status.ps1 -Since 1h
+```
+
+Normal deployments preserve the existing Kubernetes Secrets. Secret-changing commands read
+the ignored `.env.distro` and `.env.ocean` files locally and stream them directly to Kubernetes
+over SSH without creating remote env files.
 
 ---
 
@@ -136,7 +158,8 @@ To run the automated test suite (42+ tests covering range logic, scoring, and re
 - **Linux/Shell:** `./run_tests.sh`
 
 For the complete non-mutating validation suite, including formatting, lint, typing,
-architecture contracts, tests, and coverage, run `check.bat` or `./check.sh`.
+architecture contracts, tests, and coverage, run `check.bat` or `./check.sh`. The scripts
+create `.venv` when needed and never require production configuration.
 
 ---
 

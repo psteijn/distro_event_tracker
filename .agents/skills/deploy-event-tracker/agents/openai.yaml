@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deploy Event Tracker"
+  short_description: "Release Discord bots to Ubuntu MicroK8s"
+  default_prompt: "Use $deploy-event-tracker to safely deploy the committed Discord bot release to Ubuntu."

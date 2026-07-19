@@ -1,0 +1,16 @@
+.git
+.agents
+.cache
+.coverage
+.mypy_cache
+.pytest_cache
+.ruff_cache
+__pycache__
+venv
+*.log
+.env
+.env.*
+docs
+tests
+.env*
+reminders_opt_out*.txt

@@ -32,14 +32,18 @@ from .events.models import Event
 from .events.reminders import handle_event_reminder
 from .events.scoring import calculate_event_weighted_scores as calculate_domain_event_scores
 from .events.service import EventService
+from .health import HealthServer
 
 # Logging configuration
-log_file = os.getenv('LOG_FILE', 'bot.log')
+log_file = os.getenv('LOG_FILE')
+log_handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+if log_file:
+    log_handlers.insert(0, logging.FileHandler(log_file, encoding='utf-8'))
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] [%(levelname)-8s] %(name)s (%(filename)s:%(lineno)d): %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[logging.FileHandler(log_file, encoding='utf-8'), logging.StreamHandler(sys.stdout)],
+    handlers=log_handlers,
 )
 logger = logging.getLogger('bot')
 
@@ -59,8 +63,11 @@ intents.reactions = True
 class EventBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.health_server = HealthServer(self, port=int(os.getenv('HEALTH_PORT', '8080')))
 
     async def setup_hook(self):
+        await self.health_server.start()
+
         from .bootstrap import install_cogs
 
         await install_cogs(
@@ -80,6 +87,10 @@ class EventBot(commands.Bot):
                 logger.info(f"   - /{command.name}")
         except Exception as e:
             logger.error(f"❌ Failed to synchronize slash commands: {e}")
+
+    async def close(self):
+        await self.health_server.close()
+        await super().close()
 
 
 bot = EventBot(command_prefix=BOT_PREFIX, intents=intents, case_insensitive=True)
