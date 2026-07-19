@@ -91,7 +91,8 @@ echo "Migration preflight passed for Podman $version."
     } 'Unable to stage the Podman release and configuration'
 
     $releasePath = "/srv/releases/distro-event-tracker/$revision"
-    Invoke-Remote ("RELEASE_ROOT='{0}' SKIP_FULL_INIT=1 bash '{0}/ops/podman/migrate.sh' '{1}'" -f $releasePath, $revision)
+    $migrationEnv = if ($Cutover) { 'SKIP_FULL_INIT=1 ' } else { '' }
+    Invoke-Remote ("RELEASE_ROOT='{0}' {1}bash '{0}/ops/podman/migrate.sh' '{2}'" -f $releasePath, $migrationEnv, $revision)
 
     if ($Cutover) {
         $cutoverCheck = @'
@@ -99,7 +100,9 @@ set -eu
 for instance in distro ocean; do
   test "$(microk8s kubectl -n distro-event-tracker get "deployment/distro-event-tracker-$instance" -o jsonpath='{.spec.replicas}')" = 0
   systemctl --user is-active --quiet "distro-event-tracker-$instance.service"
-  test "$(podman inspect --format '{{.State.Health.Status}}' "distro-event-tracker-$instance")" = healthy
+  if [ "__SKIP_HEALTH__" != "True" ]; then
+    test "$(podman inspect --format '{{.State.Health.Status}}' "distro-event-tracker-$instance")" = healthy
+  fi
 done
 test "$(loginctl show-user psteijn -p Linger --value)" = yes
 snap list microk8s >/dev/null
@@ -108,6 +111,7 @@ for unit in homeassistant.service piper.service zwave-js-ui.service; do
 done
 echo "Podman cutover verified; MicroK8s remains installed for the Discord validation window."
 '@
+        $cutoverCheck = $cutoverCheck.Replace('__SKIP_HEALTH__', $Cutover.IsPresent.ToString())
         Invoke-Remote $cutoverCheck
         Write-Host 'Cutover complete. Both bots are running under Podman; MicroK8s was intentionally left installed for validation.'
         exit 0

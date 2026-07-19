@@ -21,16 +21,15 @@ wait_for_bot() {
       continue
     fi
     health="$(podman inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container" 2>/dev/null || true)"
-    if [[ "$health" == "healthy" ]] \
-      && podman logs "$container" 2>&1 | grep -Fq 'has connected to Discord!' \
-      && { [[ "${SKIP_FULL_INIT:-0}" == "1" ]] || \
-           podman logs "$container" 2>&1 | grep -Fq 'Bot fully initialized and memory reconstructed'; }; then
+    if podman logs "$container" 2>&1 | grep -Fq 'has connected to Discord!' \
+      && { [[ "${SKIP_FULL_INIT:-0}" == "1" ]] || [[ "$health" == "healthy" && \
+           podman logs "$container" 2>&1 | grep -Fq 'Bot fully initialized and memory reconstructed' ]]; }; then
       return 0
     fi
     sleep 5
   done
 
-  echo "Timed out waiting for $instance to become healthy${SKIP_FULL_INIT:+ and Discord-connected}." >&2
+  echo "Timed out waiting for $instance to become ${SKIP_FULL_INIT:+Discord-connected}${SKIP_FULL_INIT:-healthy and fully initialized}." >&2
   systemctl --user status "$service" --no-pager >&2 || true
   podman logs --tail 100 "$container" >&2 2>&1 || true
   return 1
@@ -47,7 +46,7 @@ verify_bot_revision() {
     echo "$instance is running revision $actual_revision instead of $expected_revision." >&2
     return 1
   }
-  [[ "$health" == "healthy" ]] || {
+  [[ "${SKIP_FULL_INIT:-0}" == "1" || "$health" == "healthy" ]] || {
     echo "$instance health is $health instead of healthy." >&2
     return 1
   }

@@ -94,7 +94,11 @@ migrate_instance() {
     echo "$instance reminder state checksum changed during migration." >&2
     return 1
   fi
-  systemctl --user start "$service"
+  if [[ "${SKIP_FULL_INIT:-0}" == "1" ]]; then
+    systemctl --user start --no-block "$service"
+  else
+    systemctl --user start "$service"
+  fi
   wait_for_bot "$instance"
   verify_bot_revision "$instance" "$RELEASE_SHA"
   [[ "$(microk8s_replica_count "$instance")" == "0" ]] || {
