@@ -1,62 +1,72 @@
 # Gemini Project Instructions: Distro Event Tracker
 
-These instructions are foundational mandates for all Gemini sessions working in this repository. They take absolute precedence over general workflows.
+These repository-specific instructions supplement `AGENTS.md`. Follow `AGENTS.md`
+for the authoritative development, deployment, secret-handling, and runtime rules.
 
-## 🏛️ Architectural Mandates (CRITICAL)
-### 1. Database-less Persistence
-- **Rule:** The bot MUST remain stateless. It reconstructs memory by scanning channel history.
-- **Constraint:** Any data that needs to survive a restart (attendance, event names, multipliers) MUST be stored within the Discord message itself (Embed Title, Fields, or Footer).
-- **Warning:** Changing the Embed Title prefix (e.g., "🏰 ") or Footer format ("Event ID: {id}") will break the `reconstruct_from_history` logic.
+## Architectural mandates
 
-### 2. Scoring Logic
-- **Formula:** `Final Score = Event Multiplier (1x/2x/8x) * Participation Multiplier (1.0/0.75/0.5/0.25)`.
-- **Validation:** Always verify both multipliers when modifying summary or data export logic.
+### Database-less event persistence
 
-### 3. Message Chunking
-- **Mandate:** Never use simple character-count splitting for long Discord messages.
-- **Pattern:** Use the `send_long_message(ctx, blocks)` helper.
-- **Rule:** Pass data as a `List[str]` where each string is an unbreakable block (e.g., one entire event record) to prevent "spurious linebreaks" in the middle of records.
+- The bot reconstructs event state by scanning Discord channel history.
+- Persistent attendance, event names, and multipliers must remain encoded in the
+  Discord message embed.
+- Changing the embed title prefix or the `Event ID: {id}` footer format requires
+  updating and testing history reconstruction.
 
-### 4. Manual Attendance & Transparency
-- **Mandate:** All manual attendance entries (via `!add_users` or `!backfill`) must be visible in the event embed for audit purposes.
-- **Pattern:** Use the `update_embed_manual_attendance(embed, manual_attendance)` helper function to ensure consistent formatting and emoji display.
+### Scoring
 
-### 5. Raw Data Format (`!data`)
-- **Format:** `[event_id] [event_type] name: user1 (score), user2 (score)`
-- **Rule:** Maintain the bracketed type and specific colon/comma spacing for parsability by external tools.
+`Final Score = Event Multiplier (1x/2x/8x) * Participation Multiplier (1.0/0.75/0.5/0.25)`
 
-## 🛠️ Tech Stack & Standards
-- **Language:** Python 3.10+ (f-strings and type hinting required)
-- **Bot Framework:** `discord.py`
-- **Formatting:** Black (run `./lint.sh` or `lint.bat` before every commit)
-- **Linting:** Ruff
-- **Testing:** `pytest` (with `pytest-asyncio`)
-- **Timezone:** Always use `PACIFIC_TZ` (US/Pacific) for event creation and display.
+Verify both multipliers when changing summary or export behavior.
 
-## 🧪 Testing & CI Workflow
-- **Pre-commit:** You MUST run `run_tests.sh` and `lint.sh`.
-- **Mocking:** Use the `tests/utils_discord_mocks.py` framework. Never attempt to connect to the real Discord API during unit tests.
-- **GitHub:** This repo uses standard feature branching. Do not commit to `main` directly; propose a branch and PR.
+### Long Discord messages
 
-## 🔄 Standard Workflow After Changes
-After implementing any feature or fix, follow these steps to ensure quality and successful deployment:
+- Do not split long messages using only character counts.
+- Use `send_long_message(ctx, blocks)` with one unbreakable record per block.
 
-1. **Validate Quality:**
-   - Run `.\lint.bat` (or `./lint.sh`) to ensure code style compliance.
-   - Run `.\run_tests.bat` (or `./run_tests.sh`) to verify all unit tests pass.
+### Manual attendance
 
-2. **Deploy & Verify:**
-   - Run `.\deploy.bat` to restart the Windows Task Scheduler tasks (`DistroEventTracker` and `OceanDistroEventTracker`).
-   - **Check Status (Gemini-Friendly):** Run `python deploy_report.py`. This script provides a high-signal summary of the logs (bot name, emoji status, and last event) to avoid reading raw log files.
+Manual attendance added with `!add_users` or `!backfill` must remain visible in
+the event embed. Use `update_embed_manual_attendance` for consistent formatting.
 
-3. **Source Control:**
-   - Once verified, commit the changes with a descriptive message.
-   - Push the changes to the `main` branch (or your feature branch as appropriate) in the GitHub repository.
+### Raw-data compatibility
 
-## 🏷️ Event Mappings
-Maintain the following emoji-to-type mapping in `EVENT_TYPE_MAP` and `BACKFILL_TYPE_MAP`:
-- 🏰 -> `dungeon` (1x)
-- ⚔️ -> `mini` (1x)
-- 🗺️ -> `t8` (1x)
-- 👹 -> `main` / `boss` (2x)
-- 👑 -> `omni` (8x)
+Preserve the `!data` record format:
+
+`[event_id] [event_type] name: user1 (score), user2 (score)`
+
+## Development and validation
+
+- Use Python 3.10 or newer and the project `.venv`.
+- Use `discord.py`, Black, Ruff, mypy, pytest, and import-linter as configured.
+- Use `PACIFIC_TZ` for event creation and display.
+- Never connect unit tests to the real Discord API.
+- Prefer the mocks in `tests/utils_discord_mocks.py`.
+- Run `.\check.bat` on Windows or `./check.sh` on Linux before publishing.
+- Validation must work without production environment files.
+
+## Deployment and operations
+
+- Windows is the Git checkout and plaintext-secret authority.
+- Production runs on the approved Ubuntu target `steijnserver` under MicroK8s.
+- Run `.\deploy.bat -DryRun` before production deployment when practical.
+- Run `.\deploy.bat` for a code-only immutable deployment; it preserves
+  Kubernetes Secrets.
+- Use `.\deploy.bat -SyncSecrets` or `.\deploy.bat -SecretsOnly` only when
+  secret synchronization is explicitly requested.
+- Inspect production with:
+
+  `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ops\remote-status.ps1 -Since 10m`
+
+- Roll back with `.\deploy.bat -Rollback <full-sha>`.
+- Do not create a Git checkout, Git credentials, or plaintext env files on Ubuntu.
+
+## Event mappings
+
+Keep `EVENT_TYPE_MAP` and `BACKFILL_TYPE_MAP` aligned:
+
+- 🏰 → `dungeon` (1x)
+- ⚔️ → `mini` (1x)
+- 🗺️ → `t8` (1x)
+- 👹 → `main` / `boss` (2x)
+- 👑 → `omni` (8x)

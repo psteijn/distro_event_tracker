@@ -5,6 +5,7 @@ echo ========================================
 echo.
 
 call init.bat
+if errorlevel 1 exit /b %errorlevel%
 
 REM Set default ENV_FILE if not set
 if "%ENV_FILE%"=="" set ENV_FILE=.env

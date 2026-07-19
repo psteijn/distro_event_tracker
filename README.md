@@ -57,8 +57,8 @@ Create the isolated development environment and run all checks:
 The check suite does not require Discord credentials or an `.env` file.
 
 ### 3. Configuration
-The bot uses `.env` files for configuration. 
-1. Copy `env_example.txt` to `.env`, or use `.env.distro.example` and `.env.ocean.example` for the two production-shaped local instances.
+The bot uses `.env` files for configuration.
+1. Copy `.env.distro.example` to `.env` for a single local instance, or copy the two example files to ignored `.env.distro` and `.env.ocean` files for production-shaped local instances.
 2. Fill in your `DISCORD_TOKEN` and `EVENT_CHANNEL_ID`.
 
 **Customizing Multipliers & Emojis:**

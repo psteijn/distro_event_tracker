@@ -18,10 +18,10 @@ if [ ! -f "$ENV_FILE" ]; then
     echo
     echo "WARNING: $ENV_FILE not found!"
     if [ "$ENV_FILE" == ".env" ]; then
-        echo "Please copy env_example.txt to .env and add your Discord bot token"
+        echo "Please copy .env.distro.example to .env and add your Discord bot token"
         echo
         echo "Creating .env file from template..."
-        cp env_example.txt .env
+        cp .env.distro.example .env
         echo
         echo "Please edit .env file and add your Discord bot token, then run this script again."
     else

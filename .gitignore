@@ -1,6 +1,5 @@
 # Environment variables and local configs
 .env*
-!env_example.txt
 !.env.distro.example
 !.env.ocean.example
 reminders_opt_out_*.txt
