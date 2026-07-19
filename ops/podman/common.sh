@@ -17,9 +17,11 @@ wait_for_bot() {
 
   while (( SECONDS < deadline )); do
     state="$(systemctl --user show "$service" -p ActiveState --value 2>/dev/null || true)"
-    if [[ "$state" != "active" && !( "${SKIP_FULL_INIT:-0}" == "1" && "$state" == "activating" ) ]]; then
-      sleep 5
-      continue
+    if [[ "$state" != "active" ]]; then
+      if [[ "${SKIP_FULL_INIT:-0}" != "1" || "$state" != "activating" ]]; then
+        sleep 5
+        continue
+      fi
     fi
     health="$(podman inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container" 2>/dev/null || true)"
     if podman logs "$container" 2>&1 | grep -Fq 'has connected to Discord!'; then
