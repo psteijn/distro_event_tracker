@@ -16,7 +16,8 @@ wait_for_bot() {
   deadline=$((SECONDS + 1800))
 
   while (( SECONDS < deadline )); do
-    if ! systemctl --user is-active --quiet "$service"; then
+    state="$(systemctl --user show "$service" -p ActiveState --value 2>/dev/null || true)"
+    if [[ "$state" != "active" && !( "${SKIP_FULL_INIT:-0}" == "1" && "$state" == "activating" ) ]]; then
       sleep 5
       continue
     fi
