@@ -21,10 +21,13 @@ wait_for_bot() {
       continue
     fi
     health="$(podman inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container" 2>/dev/null || true)"
-    if podman logs "$container" 2>&1 | grep -Fq 'has connected to Discord!' \
-      && { [[ "${SKIP_FULL_INIT:-0}" == "1" ]] || [[ "$health" == "healthy" && \
-           podman logs "$container" 2>&1 | grep -Fq 'Bot fully initialized and memory reconstructed' ]]; }; then
-      return 0
+    if podman logs "$container" 2>&1 | grep -Fq 'has connected to Discord!'; then
+      if [[ "${SKIP_FULL_INIT:-0}" == "1" ]] || {
+        [[ "$health" == "healthy" ]] &&
+        podman logs "$container" 2>&1 | grep -Fq 'Bot fully initialized and memory reconstructed';
+      }; then
+        return 0
+      fi
     fi
     sleep 5
   done
