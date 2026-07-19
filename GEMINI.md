@@ -48,10 +48,10 @@ Preserve the `!data` record format:
 ## Deployment and operations
 
 - Windows is the Git checkout and plaintext-secret authority.
-- Production runs on the approved Ubuntu target `steijnserver` under MicroK8s.
+- Production runs on the approved Ubuntu target `steijnserver` under rootless Podman Quadlets.
 - Run `.\deploy.bat -DryRun` before production deployment when practical.
 - Run `.\deploy.bat` for a code-only immutable deployment; it preserves
-  Kubernetes Secrets.
+  the remote Podman environment files.
 - Use `.\deploy.bat -SyncSecrets` or `.\deploy.bat -SecretsOnly` only when
   secret synchronization is explicitly requested.
 - Inspect production with:
@@ -59,7 +59,8 @@ Preserve the `!data` record format:
   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ops\remote-status.ps1 -Since 10m`
 
 - Roll back with `.\deploy.bat -Rollback <full-sha>`.
-- Do not create a Git checkout, Git credentials, or plaintext env files on Ubuntu.
+- Do not create a Git checkout or Git credentials on Ubuntu. Runtime environment
+  files are managed remotely with mode `0600` by the deployment script.
 
 ## Event mappings
 

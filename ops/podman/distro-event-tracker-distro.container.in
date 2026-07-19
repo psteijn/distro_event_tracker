@@ -1,0 +1,43 @@
+[Unit]
+Description=Distro Event Tracker - distro bot (Podman)
+
+[Container]
+ContainerName=distro-event-tracker-distro
+Image=localhost/distro-event-tracker:RELEASE_TAG
+Pull=never
+EnvironmentFile=%h/.config/distro-event-tracker/distro.env
+Environment=ENV_FILE=/dev/null
+Environment=LOG_FILE=
+Environment=HEALTH_PORT=8080
+Environment=REMINDER_OPT_OUT_FILE=/data/reminders_opt_out.txt
+Volume=%h/.local/share/distro-event-tracker/distro:/data
+User=10001
+Group=10001
+UserNS=keep-id:uid=10001,gid=10001
+ReadOnly=true
+ReadOnlyTmpfs=true
+DropCapability=all
+NoNewPrivileges=true
+Memory=512m
+PodmanArgs=--cpus=0.5
+PidsLimit=256
+LogDriver=journald
+StopTimeout=30
+HealthStartupCmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=2).read()"
+HealthStartupInterval=5s
+HealthStartupRetries=360
+HealthStartupTimeout=3s
+HealthCmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=2).read()"
+HealthInterval=30s
+HealthRetries=3
+HealthTimeout=3s
+HealthOnFailure=kill
+Notify=healthy
+
+[Service]
+Restart=always
+RestartSec=5
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=default.target
