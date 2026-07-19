@@ -10,7 +10,7 @@ Set-StrictMode -Version Latest
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $SshTarget = 'steijnserver'
 
-$selectedModes = @($DryRun, $Cutover, $DecommissionMicroK8s) | Where-Object { $_ }
+$selectedModes = @(@($DryRun, $Cutover, $DecommissionMicroK8s) | Where-Object { $_ })
 if ($selectedModes.Count -ne 1) {
     throw 'Specify exactly one of -DryRun, -Cutover, or -DecommissionMicroK8s.'
 }
