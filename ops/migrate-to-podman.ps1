@@ -91,7 +91,7 @@ echo "Migration preflight passed for Podman $version."
     } 'Unable to stage the Podman release and configuration'
 
     $releasePath = "/srv/releases/distro-event-tracker/$revision"
-    Invoke-Remote ("RELEASE_ROOT='{0}' bash '{0}/ops/podman/migrate.sh' '{1}'" -f $releasePath, $revision)
+    Invoke-Remote ("RELEASE_ROOT='{0}' SKIP_FULL_INIT=1 bash '{0}/ops/podman/migrate.sh' '{1}'" -f $releasePath, $revision)
 
     if ($Cutover) {
         $cutoverCheck = @'

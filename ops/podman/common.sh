@@ -23,13 +23,14 @@ wait_for_bot() {
     health="$(podman inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container" 2>/dev/null || true)"
     if [[ "$health" == "healthy" ]] \
       && podman logs "$container" 2>&1 | grep -Fq 'has connected to Discord!' \
-      && podman logs "$container" 2>&1 | grep -Fq 'Bot fully initialized and memory reconstructed'; then
+      && { [[ "${SKIP_FULL_INIT:-0}" == "1" ]] || \
+           podman logs "$container" 2>&1 | grep -Fq 'Bot fully initialized and memory reconstructed'; }; then
       return 0
     fi
     sleep 5
   done
 
-  echo "Timed out waiting for $instance to become healthy and fully initialized." >&2
+  echo "Timed out waiting for $instance to become healthy${SKIP_FULL_INIT:+ and Discord-connected}." >&2
   systemctl --user status "$service" --no-pager >&2 || true
   podman logs --tail 100 "$container" >&2 2>&1 || true
   return 1
