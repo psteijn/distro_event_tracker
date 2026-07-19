@@ -17,7 +17,8 @@ if [[ "$MODE" != "apply" && "$MODE" != "--dry-run" ]]; then
   exit 2
 fi
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT_DIR="$(cd "${RELEASE_ROOT:-$SCRIPT_ROOT}" && pwd)"
 RELEASE_BASE="/srv/releases/distro-event-tracker"
 IMAGE_TAG="git-${RELEASE_SHA:0:12}"
 IMAGE="localhost/distro-event-tracker:${IMAGE_TAG}"

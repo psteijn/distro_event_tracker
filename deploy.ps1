@@ -99,7 +99,8 @@ try {
 
     if ($Rollback) {
         $releasePath = "$ReleaseBase/$Rollback"
-        Invoke-Remote "test -f '$releasePath/.release-revision' && bash '$releasePath/ops/k8s/deploy.sh' '$Rollback'"
+        $currentHelper = "$ReleaseBase/current/ops/k8s/deploy.sh"
+        Invoke-Remote "test -f '$releasePath/.release-revision' && test -f '$currentHelper' && RELEASE_ROOT='$releasePath' bash '$currentHelper' '$Rollback'"
         exit 0
     }
 
