@@ -76,10 +76,14 @@ echo "Migration preflight passed for Podman $version."
         exit 0
     }
 
-    Write-Host 'Enabling the psteijn user manager at boot. SSH will request sudo authentication.'
-    Invoke-Native {
-        ssh -t $SshTarget 'sudo loginctl enable-linger psteijn'
-    } 'Unable to enable user lingering'
+    $linger = (& ssh -o BatchMode=yes $SshTarget 'loginctl show-user psteijn -p Linger --value').Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect user lingering.' }
+    if ($linger -ne 'yes') {
+        Write-Host 'Enabling the psteijn user manager at boot. SSH will request sudo authentication.'
+        Invoke-Native {
+            ssh -t $SshTarget 'sudo loginctl enable-linger psteijn'
+        } 'Unable to enable user lingering'
+    }
     Invoke-Remote 'test "$(loginctl show-user psteijn -p Linger --value)" = yes'
 
     Invoke-Native {
