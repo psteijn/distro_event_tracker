@@ -115,5 +115,6 @@ while IFS= read -r image; do
     podman image rm "$image" >/dev/null 2>&1 || true
   fi
 done < <(podman images --format '{{.Repository}}:{{.Tag}}' | grep '^localhost/distro-event-tracker:git-' || true)
+podman image prune --force >/dev/null
 
 echo "Deployed $RELEASE_SHA as $IMAGE to both rootless Podman services."
