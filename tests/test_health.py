@@ -47,3 +47,22 @@ async def test_health_endpoints_track_discord_readiness():
         assert (await request(server, "/unknown"))[0] == 404
     finally:
         await server.close()
+
+
+@pytest.mark.asyncio
+async def test_health_endpoint_can_use_explicit_gateway_readiness():
+    bot = FakeBot()
+    connected = False
+    server = HealthServer(
+        bot,
+        host="127.0.0.1",
+        port=0,
+        readiness_check=lambda: connected,
+    )
+    await server.start()
+    try:
+        assert (await request(server, "/health/ready"))[0] == 503
+        connected = True
+        assert (await request(server, "/health/ready"))[0] == 200
+    finally:
+        await server.close()

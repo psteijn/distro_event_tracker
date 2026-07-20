@@ -24,6 +24,6 @@ Deployment is separate and must only run when explicitly requested.
 - Deploy only a clean `HEAD` that equals `origin/main` using `deploy.ps1`.
 - Preserve the ignored local environment files unless the user explicitly requests `-SyncSecrets` or `-SecretsOnly`.
 - Production bots run as rootless Podman Quadlets under `psteijn`; do not use rootful Podman or edit generated systemd units by hand.
-- Use `ops/migrate-to-podman.ps1 -DryRun` before the one-time cutover. Run `-DecommissionMicroK8s` only with explicit authorization because it stops the Kubernetes bots and purges the MicroK8s snap.
-- Use `ops/migrate-to-podman.ps1 -Cutover` when the bots should move to Podman while MicroK8s remains installed for a validation window; use `-DecommissionMicroK8s` only for the later teardown.
+- MicroK8s was decommissioned in July 2026. Do not reintroduce Kubernetes-specific deployment paths.
+- Discord gateway readiness and historical reconstruction are separate states. A service can be healthy while reconstruction continues; allow up to 60 minutes when a deployment must verify the final reconstruction marker.
 - Use `ops/remote-status.ps1` for read-only status and the deployment and operations skills for production changes and diagnostics.

@@ -3,7 +3,6 @@ param(
     [switch]$DryRun,
     [switch]$SyncSecrets,
     [switch]$SecretsOnly,
-    [switch]$StageOnly,
     [ValidatePattern('^[0-9a-f]{40}$')]
     [string]$Rollback
 )
@@ -14,11 +13,11 @@ $RepoRoot = $PSScriptRoot
 $SshTarget = 'steijnserver'
 $ReleaseBase = '/srv/releases/distro-event-tracker'
 
-if ($DryRun -and ($SyncSecrets -or $SecretsOnly -or $StageOnly -or $Rollback)) {
-    throw '-DryRun cannot be combined with a secret-changing option, -StageOnly, or -Rollback.'
+if ($DryRun -and ($SyncSecrets -or $SecretsOnly -or $Rollback)) {
+    throw '-DryRun cannot be combined with a secret-changing option or -Rollback.'
 }
-if ($SecretsOnly -and ($StageOnly -or $Rollback)) {
-    throw '-SecretsOnly cannot be combined with -StageOnly or -Rollback.'
+if ($SecretsOnly -and $Rollback) {
+    throw '-SecretsOnly cannot be combined with -Rollback.'
 }
 
 function Invoke-Native {
@@ -134,8 +133,7 @@ try {
     }
     Send-ReleaseArchive -Revision $revision -Temporary $false
     $releasePath = "$ReleaseBase/$revision"
-    $mode = if ($StageOnly) { ' --stage-only' } else { '' }
-    Invoke-Remote ("RELEASE_ROOT='{0}' bash '{0}/ops/podman/deploy.sh' '{1}'{2}" -f $releasePath, $revision, $mode)
+    Invoke-Remote ("RELEASE_ROOT='{0}' bash '{0}/ops/podman/deploy.sh' '{1}'" -f $releasePath, $revision)
 }
 finally {
     Pop-Location

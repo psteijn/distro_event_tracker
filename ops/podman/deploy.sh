@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
-  echo "Usage: deploy.sh <full-commit-sha> [--dry-run|--stage-only]" >&2
+  echo "Usage: deploy.sh <full-commit-sha> [--dry-run]" >&2
   exit 2
 fi
 
@@ -12,8 +12,8 @@ if [[ ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Release revision must be a full lowercase Git SHA." >&2
   exit 2
 fi
-if [[ "$MODE" != "apply" && "$MODE" != "--dry-run" && "$MODE" != "--stage-only" ]]; then
-  echo "Second argument must be --dry-run or --stage-only when supplied." >&2
+if [[ "$MODE" != "apply" && "$MODE" != "--dry-run" ]]; then
+  echo "Second argument must be --dry-run when supplied." >&2
   exit 2
 fi
 
@@ -80,20 +80,6 @@ for instance in distro ocean; do
     "$QUADLET_DIR/distro-event-tracker-${instance}.container"
 done
 systemctl --user daemon-reload
-
-if [[ "$MODE" == "--stage-only" ]]; then
-  echo "Staged $RELEASE_SHA for the guarded MicroK8s migration."
-  exit 0
-fi
-
-for instance in distro ocean; do
-  replicas="$(microk8s_replica_count "$instance")"
-  [[ "$replicas" == "0" ]] || {
-    echo "Refusing to start $instance while its MicroK8s Deployment has $replicas replica(s)." >&2
-    echo "Use ops/migrate-to-podman.ps1 for the one-time cutover." >&2
-    exit 1
-  }
-done
 
 for instance in distro ocean; do
   systemctl --user restart "$(service_name "$instance")"

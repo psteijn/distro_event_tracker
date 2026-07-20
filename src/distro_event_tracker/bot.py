@@ -63,7 +63,12 @@ intents.reactions = True
 class EventBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.health_server = HealthServer(self, port=int(os.getenv('HEALTH_PORT', '8080')))
+        self.discord_connected = False
+        self.health_server = HealthServer(
+            self,
+            port=int(os.getenv('HEALTH_PORT', '8080')),
+            readiness_check=lambda: self.discord_connected and not self.is_closed(),
+        )
 
     async def setup_hook(self):
         await self.health_server.start()
@@ -1713,6 +1718,10 @@ async def dibs_data_command(ctx):
 async def on_ready():
     global hundred_emoji, seventy_five_emoji, fifty_emoji, twenty_five_emoji
 
+    # Discord.py does not report is_ready() until this callback returns. Historical
+    # reconstruction can take tens of minutes, so track gateway readiness separately.
+    bot.discord_connected = True
+
     # Start timing initialization
     init_start_time = time.time()
 
@@ -1784,6 +1793,12 @@ async def on_ready():
     except Exception as e:
         logger.error(f'❌ Error during reconstruction: {e}')
         logger.info('🚀 Bot ready! (Running without historical data)')
+
+
+@bot.event
+async def on_disconnect():
+    bot.discord_connected = False
+    logger.warning('Discord gateway disconnected; readiness probe is now unavailable.')
 
 
 @bot.before_invoke

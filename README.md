@@ -93,16 +93,14 @@ Production source is packaged from the clean Windows Git checkout and sent to th
 .\deploy.ps1 -SecretsOnly        # rotate configuration and restart both bots
 .\deploy.ps1 -Rollback <full-sha>
 .\ops\remote-status.ps1 -Since 1h
-.\ops\migrate-to-podman.ps1 -DryRun
-.\ops\migrate-to-podman.ps1 -Cutover # migrate bots, keep MicroK8s for validation
-.\ops\migrate-to-podman.ps1 -DecommissionMicroK8s # one-time guarded cutover
 ```
 
 Normal deployments preserve the existing remote environment files. Secret-changing commands read
 the ignored `.env.distro` and `.env.ocean` files locally and stream them atomically over SSH to
 mode-`0600` files in the `psteijn` user's Podman configuration directory. The one-time migration
-script copies reminder opt-out state from the two Kubernetes volumes, verifies checksums, and only
-purges MicroK8s after both rootless Podman services have completed initialization.
+from MicroK8s was completed in July 2026; production now runs only the two rootless Podman
+Quadlets. Health becomes ready when the Discord gateway connects, while deployment verification
+continues waiting for historical reconstruction to finish.
 
 ---
 

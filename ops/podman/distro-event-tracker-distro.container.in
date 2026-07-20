@@ -25,7 +25,7 @@ LogDriver=journald
 StopTimeout=30
 HealthStartupCmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=2).read()"
 HealthStartupInterval=5s
-HealthStartupRetries=360
+HealthStartupRetries=60
 HealthStartupTimeout=3s
 HealthCmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=2).read()"
 HealthInterval=30s
@@ -37,7 +37,7 @@ Notify=healthy
 [Service]
 Restart=always
 RestartSec=5
-TimeoutStartSec=1800
+TimeoutStartSec=300
 
 [Install]
 WantedBy=default.target

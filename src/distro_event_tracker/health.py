@@ -21,11 +21,15 @@ class HealthServer:
         host: str = "0.0.0.0",
         port: int = 8080,
         server_factory: Callable = asyncio.start_server,
+        readiness_check: Callable[[], bool] | None = None,
     ) -> None:
         self.bot = bot
         self.host = host
         self.port = port
         self.server_factory = server_factory
+        self.readiness_check = readiness_check or (
+            lambda: self.bot.is_ready() and not self.bot.is_closed()
+        )
         self.server: asyncio.AbstractServer | None = None
 
     async def start(self) -> None:
@@ -48,7 +52,7 @@ class HealthServer:
 
             if path == "/health/live":
                 status, body = 200, b"live\n"
-            elif path == "/health/ready" and self.bot.is_ready() and not self.bot.is_closed():
+            elif path == "/health/ready" and self.readiness_check():
                 status, body = 200, b"ready\n"
             elif path == "/health/ready":
                 status, body = 503, b"not ready\n"
