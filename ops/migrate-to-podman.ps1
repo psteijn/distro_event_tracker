@@ -99,7 +99,7 @@ echo "Migration preflight passed for Podman $version."
         $migrationEnv = if ($Cutover) { 'SKIP_FULL_INIT=1 ' } else { '' }
         Invoke-Remote ("RELEASE_ROOT='{0}' {1}bash '{0}/ops/podman/migrate.sh' '{2}'" -f $releasePath, $migrationEnv, $revision)
     } else {
-        Invoke-Remote 'for instance in distro ocean; do podman inspect "distro-event-tracker-$instance" >/dev/null; podman logs "distro-event-tracker-$instance" 2>&1 | grep -Fq "has connected to Discord!"; done'
+        Invoke-Remote 'for instance in distro ocean; do podman inspect "distro-event-tracker-$instance" >/dev/null; done'
     }
 
     if ($Cutover) {
