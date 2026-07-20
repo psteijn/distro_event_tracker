@@ -25,5 +25,6 @@ Deployment is separate and must only run when explicitly requested.
 - Preserve the ignored local environment files unless the user explicitly requests `-SyncSecrets` or `-SecretsOnly`.
 - Production bots run as rootless Podman Quadlets under `psteijn`; do not use rootful Podman or edit generated systemd units by hand.
 - MicroK8s was decommissioned in July 2026. Do not reintroduce Kubernetes-specific deployment paths.
-- Discord gateway readiness and historical reconstruction are separate states. A service can be healthy while reconstruction continues; allow up to 60 minutes when a deployment must verify the final reconstruction marker.
+- Normal deployments use a bounded two-minute startup gate: expected image, healthy service, Discord connection, three reconstructed events, and no new error-level startup signals. Use `deploy.ps1 -VerifyFullInitialization` only when the final reconstruction marker must be verified.
+- A failed bounded release deployment automatically rolls both bots back to the prior retained release. Explicit `-Rollback` and `-SecretsOnly` commands still require operator diagnosis if their own startup checks fail.
 - Use `ops/remote-status.ps1` for read-only status and the deployment and operations skills for production changes and diagnostics.

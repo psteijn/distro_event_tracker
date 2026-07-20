@@ -3,6 +3,7 @@ param(
     [switch]$DryRun,
     [switch]$SyncSecrets,
     [switch]$SecretsOnly,
+    [switch]$VerifyFullInitialization,
     [ValidatePattern('^[0-9a-f]{40}$')]
     [string]$Rollback
 )
@@ -13,8 +14,8 @@ $RepoRoot = $PSScriptRoot
 $SshTarget = 'steijnserver'
 $ReleaseBase = '/srv/releases/distro-event-tracker'
 
-if ($DryRun -and ($SyncSecrets -or $SecretsOnly -or $Rollback)) {
-    throw '-DryRun cannot be combined with a secret-changing option or -Rollback.'
+if ($DryRun -and ($SyncSecrets -or $SecretsOnly -or $VerifyFullInitialization -or $Rollback)) {
+    throw '-DryRun cannot be combined with a secret-changing option, -VerifyFullInitialization, or -Rollback.'
 }
 if ($SecretsOnly -and $Rollback) {
     throw '-SecretsOnly cannot be combined with -Rollback.'
@@ -113,14 +114,16 @@ try {
     Invoke-Remote 'true'
     if ($SecretsOnly) {
         Sync-AllEnvironments
-        $command = 'set -eu; root=''{0}/current''; source "$root/ops/podman/common.sh"; for instance in distro ocean; do systemctl --user restart "$(service_name "$instance")"; wait_for_bot "$instance"; done' -f $ReleaseBase
+        $verifyMode = if ($VerifyFullInitialization) { 'full' } else { 'fast' }
+        $command = 'set -eu; root=''{0}/current''; source "$root/ops/podman/common.sh"; for instance in distro ocean; do started_at="$(date --utc --iso-8601=seconds)"; systemctl --user restart "$(service_name "$instance")"; wait_for_bot "$instance" "$started_at" ''{1}''; done' -f $ReleaseBase, $verifyMode
         Invoke-Remote $command
         Write-Host 'Configuration synchronized and both Podman bot services restarted successfully.'
         exit 0
     }
     if ($Rollback) {
         $releasePath = "$ReleaseBase/$Rollback"
-        Invoke-Remote ('test -f ''{0}/.release-revision'' && RELEASE_ROOT=''{0}'' bash ''{0}/ops/podman/deploy.sh'' ''{1}''' -f $releasePath, $Rollback)
+        $rollbackMode = if ($VerifyFullInitialization) { '--rollback-full' } else { '--rollback' }
+        Invoke-Remote ('test -f ''{0}/.release-revision'' && RELEASE_ROOT=''{0}'' bash ''{0}/ops/podman/deploy.sh'' ''{1}'' {2}' -f $releasePath, $Rollback, $rollbackMode)
         exit 0
     }
 
@@ -133,7 +136,8 @@ try {
     }
     Send-ReleaseArchive -Revision $revision -Temporary $false
     $releasePath = "$ReleaseBase/$revision"
-    Invoke-Remote ("RELEASE_ROOT='{0}' bash '{0}/ops/podman/deploy.sh' '{1}'" -f $releasePath, $revision)
+    $deployMode = if ($VerifyFullInitialization) { ' --verify-full' } else { '' }
+    Invoke-Remote ("RELEASE_ROOT='{0}' bash '{0}/ops/podman/deploy.sh' '{1}'{2}" -f $releasePath, $revision, $deployMode)
 }
 finally {
     Pop-Location

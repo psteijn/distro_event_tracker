@@ -22,8 +22,15 @@ for instance in distro ocean; do
     stat -c 'data_mode=%a data_owner=%u:%g data_bytes=%s' "$data_file"
     sha256sum "$data_file" | awk '{print "data_sha256=" $1}'
   fi
+  recent_logs="$(podman logs --since "$since" "$container" 2>&1 || true)"
+  latest_connection="$(printf '%s\n' "$recent_logs" | grep -F 'has connected to Discord!' | tail -n 1 || true)"
+  latest_progress="$(printf '%s\n' "$recent_logs" | grep -F 'Reconstruction progress:' | tail -n 1 || true)"
+  reconstructed_events="$(printf '%s\n' "$recent_logs" | grep -Fc 'Reconstructed event:' || true)"
+  echo "latest_discord_connection=${latest_connection:-none}"
+  echo "latest_reconstruction_progress=${latest_progress:-none}"
+  echo "reconstructed_events_since=$reconstructed_events"
   echo "RECENT_SIGNALS $instance"
-  podman logs --since "$since" "$container" 2>&1 \
+  printf '%s\n' "$recent_logs" \
     | grep -Ei 'connected to Discord|fully initialized|warning|error|exception|traceback|name or service not known|temporary failure in name resolution' \
     | tail -n 100 || true
 done

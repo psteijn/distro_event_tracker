@@ -91,6 +91,7 @@ Production source is packaged from the clean Windows Git checkout and sent to th
 .\deploy.ps1                     # deploy clean HEAD == origin/main
 .\deploy.ps1 -SyncSecrets        # explicitly synchronize env files and deploy
 .\deploy.ps1 -SecretsOnly        # rotate configuration and restart both bots
+.\deploy.ps1 -VerifyFullInitialization # opt into waiting for history reconstruction
 .\deploy.ps1 -Rollback <full-sha>
 .\ops\remote-status.ps1 -Since 1h
 ```
@@ -100,7 +101,10 @@ the ignored `.env.distro` and `.env.ocean` files locally and stream them atomica
 mode-`0600` files in the `psteijn` user's Podman configuration directory. The one-time migration
 from MicroK8s was completed in July 2026; production now runs only the two rootless Podman
 Quadlets. Health becomes ready when the Discord gateway connects, while deployment verification
-continues waiting for historical reconstruction to finish.
+uses a bounded two-minute startup gate: the intended image must be healthy, connect to Discord,
+reconstruct three events, and emit no error-level startup signals. A failed release deploy rolls
+both bots back to the prior retained release. Use `-VerifyFullInitialization` only when the final
+historical reconstruction marker is required.
 
 ---
 

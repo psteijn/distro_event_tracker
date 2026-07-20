@@ -10,10 +10,16 @@ container_name() {
 
 wait_for_bot() {
   local instance="$1"
-  local service container deadline health state
+  local started_at="$2"
+  local mode="${3:-fast}"
+  local service container deadline health state logs
   service="$(service_name "$instance")"
   container="$(container_name "$instance")"
-  deadline=$((SECONDS + 3600))
+  case "$mode" in
+    fast) deadline=$((SECONDS + 120)) ;;
+    full) deadline=$((SECONDS + 3600)) ;;
+    *) echo "Unknown verification mode: $mode" >&2; return 2 ;;
+  esac
 
   while (( SECONDS < deadline )); do
     state="$(systemctl --user show "$service" -p ActiveState --value 2>/dev/null || true)"
@@ -22,15 +28,16 @@ wait_for_bot() {
       continue
     fi
     health="$(podman inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container" 2>/dev/null || true)"
-    if [[ "$health" == "healthy" ]] \
-      && podman logs "$container" 2>&1 | grep -Fq 'has connected to Discord!' \
-      && podman logs "$container" 2>&1 | grep -Fq 'Bot fully initialized and memory reconstructed'; then
-      return 0
+    if [[ "$health" == "healthy" ]]; then
+      logs="$(podman logs --since "$started_at" "$container" 2>&1 || true)"
+      if python3 "$(dirname "${BASH_SOURCE[0]}")/verify_logs.py" --mode "$mode" <<<"$logs"; then
+        return 0
+      fi
     fi
     sleep 5
   done
 
-  echo "Timed out waiting for $instance to become healthy and fully initialized." >&2
+  echo "Timed out waiting for $instance $mode verification." >&2
   systemctl --user status "$service" --no-pager >&2 || true
   podman logs --tail 100 "$container" >&2 2>&1 || true
   return 1

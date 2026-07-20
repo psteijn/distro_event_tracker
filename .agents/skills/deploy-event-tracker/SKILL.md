@@ -12,7 +12,8 @@ description: Deploy, dry-run, roll back, or explicitly synchronize configuration
 5. Use `deploy.ps1 -SyncSecrets` only when code and both local env files must be synchronized together.
 6. Use `deploy.ps1 -SecretsOnly` only for an explicitly requested configuration rotation.
 7. Use `deploy.ps1 -Rollback <full-sha>` only for a retained production release.
-8. Wait for both rootless Quadlet services and confirm the immutable image SHA, health, Discord connection, full reconstruction, related Home Assistant service state, and recent errors. Historical reconstruction can exceed 30 minutes; allow up to 60 minutes before declaring a timeout.
+8. Normal deploys use a server-side two-minute startup gate per bot: immutable image SHA, active/healthy service, Discord connection, three reconstructed events, and no new error-level startup signals. Use `deploy.ps1 -VerifyFullInitialization` only when the final reconstruction marker is required.
 9. Never manually copy a source tree or environment file to Ubuntu; the deployment script archives tracked files and atomically streams configuration over SSH stdin.
 10. MicroK8s was permanently removed in July 2026. Do not use or recreate the retired migration tooling.
 11. Successful deployments retain five immutable releases and matching image tags, then prune dangling rootless image layers. Do not manually delete retained releases or migration backups.
+12. If a normal release fails the bounded gate, the deployment script automatically restores both bots to the prior retained release. Explicit rollback and secrets-only failures require diagnosis rather than recursive rollback.
