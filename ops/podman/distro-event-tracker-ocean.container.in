@@ -23,11 +23,11 @@ PodmanArgs=--cpus=0.5
 PidsLimit=256
 LogDriver=journald
 StopTimeout=30
-HealthStartupCmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=2).read()"
+HealthStartupCmd=python -m distro_event_tracker.healthcheck
 HealthStartupInterval=5s
 HealthStartupRetries=60
 HealthStartupTimeout=3s
-HealthCmd=python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=2).read()"
+HealthCmd=python -m distro_event_tracker.healthcheck
 HealthInterval=30s
 HealthRetries=3
 HealthTimeout=3s
