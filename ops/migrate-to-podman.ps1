@@ -55,8 +55,10 @@ version="$(podman version --format '{{.Client.Version}}')"
 test "$(printf '%s\n' 5.7.0 "$version" | sort -V | head -n1)" = 5.7.0
 test "$(df -Pk "$HOME" | awk 'NR==2 {print ($4 >= 1048576)}')" = 1
 for instance in distro ocean; do
-  test "$(microk8s kubectl -n distro-event-tracker get "deployment/distro-event-tracker-$instance" -o jsonpath='{.spec.replicas}')" = 1
-  microk8s kubectl -n distro-event-tracker wait --for=condition=Available "deployment/distro-event-tracker-$instance" --timeout=60s >/dev/null
+  test "$(microk8s kubectl -n distro-event-tracker get "deployment/distro-event-tracker-$instance" -o jsonpath='{.spec.replicas}')" = __EXPECTED_REPLICAS__
+  if [ "__EXPECTED_REPLICAS__" = 1 ]; then
+    microk8s kubectl -n distro-event-tracker wait --for=condition=Available "deployment/distro-event-tracker-$instance" --timeout=60s >/dev/null
+  fi
   microk8s kubectl -n distro-event-tracker get "pvc/distro-event-tracker-$instance-data" >/dev/null
 done
 for unit in homeassistant.service piper.service zwave-js-ui.service; do
@@ -64,6 +66,8 @@ for unit in homeassistant.service piper.service zwave-js-ui.service; do
 done
 echo "Migration preflight passed for Podman $version."
 '@
+    $expectedReplicas = if ($DecommissionMicroK8s) { '0' } else { '1' }
+    $preflight = $preflight.Replace('__EXPECTED_REPLICAS__', $expectedReplicas)
     Invoke-Remote $preflight
 
     if ($DryRun) {
@@ -86,13 +90,17 @@ echo "Migration preflight passed for Podman $version."
     }
     Invoke-Remote 'test "$(loginctl show-user psteijn -p Linger --value)" = yes'
 
-    Invoke-Native {
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'deploy.ps1') -SyncSecrets -StageOnly
-    } 'Unable to stage the Podman release and configuration'
+    if (-not $DecommissionMicroK8s) {
+        Invoke-Native {
+            powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'deploy.ps1') -SyncSecrets -StageOnly
+        } 'Unable to stage the Podman release and configuration'
 
-    $releasePath = "/srv/releases/distro-event-tracker/$revision"
-    $migrationEnv = if ($Cutover) { 'SKIP_FULL_INIT=1 ' } else { '' }
-    Invoke-Remote ("RELEASE_ROOT='{0}' {1}bash '{0}/ops/podman/migrate.sh' '{2}'" -f $releasePath, $migrationEnv, $revision)
+        $releasePath = "/srv/releases/distro-event-tracker/$revision"
+        $migrationEnv = if ($Cutover) { 'SKIP_FULL_INIT=1 ' } else { '' }
+        Invoke-Remote ("RELEASE_ROOT='{0}' {1}bash '{0}/ops/podman/migrate.sh' '{2}'" -f $releasePath, $migrationEnv, $revision)
+    } else {
+        Invoke-Remote 'for instance in distro ocean; do podman inspect "distro-event-tracker-$instance" >/dev/null; podman logs "distro-event-tracker-$instance" 2>&1 | grep -Fq "has connected to Discord!"; done'
+    }
 
     if ($Cutover) {
         $cutoverCheck = @'
