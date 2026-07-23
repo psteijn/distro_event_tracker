@@ -53,12 +53,14 @@ jobs:
           docker run --rm --entrypoint python distro-event-tracker:test -c "from distro_event_tracker.health import HealthServer; from distro_event_tracker.config import load_settings; assert load_settings().discord_token is None"
           docker run --rm --entrypoint sh distro-event-tracker:test -c "test ! -e /app/reminders_opt_out.txt && test ! -e /app/.env && test ! -e /app/bot.log"
 
-      - uses: azure/setup-kubectl@v4
-
-      - name: Render and validate Kubernetes manifests
+      - name: Render and validate Podman Quadlet templates
         shell: bash
         run: |
-          cp -R ops/k8s rendered-k8s
-          sed -i -e 's/RELEASE_TAG/git-0123456789ab/g' -e 's/RELEASE_SHA/0123456789abcdef0123456789abcdef01234567/g' rendered-k8s/deployments.yaml
-          kubectl kustomize rendered-k8s > rendered.yaml
-          kubectl apply --dry-run=client -f rendered.yaml
+          for instance in distro ocean; do
+            template="ops/podman/distro-event-tracker-${instance}.container.in"
+            test -f "$template"
+            grep -Fxq "Image=localhost/distro-event-tracker:RELEASE_TAG" "$template"
+            sed 's/RELEASE_TAG/git-0123456789ab/g' "$template" > "${instance}.container"
+            ! grep -Fq 'RELEASE_TAG' "${instance}.container"
+            grep -Fxq "Image=localhost/distro-event-tracker:git-0123456789ab" "${instance}.container"
+          done
