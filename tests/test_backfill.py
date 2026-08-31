@@ -1,6 +1,8 @@
 import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
+import discord
 import pytest
 import pytz
 from tests.utils_discord_mocks import DummyAuthor, DummyCtx, FakeMessage
@@ -67,6 +69,7 @@ async def test_backfill_creates_event_from_message(monkeypatch):
     monkeypatch.setattr(main, "EMOJI_TWENTY_FIVE", "share_25")
 
     target_author = DummyAuthor("OriginalCreator", 123)
+    target_author.mention = "<@123>"
     created_at = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
     # Reactions
@@ -139,6 +142,48 @@ async def test_backfill_creates_event_from_message(monkeypatch):
 
     user2_entry = next(u for u in event['manual_attendance'] if u['name'] == "User2")
     assert user2_entry['multiplier'] == 0.5
+
+    persisted_embed = ctx.sent[0]["embed"]
+    assert (
+        next(field for field in persisted_embed.fields if field.name == "Created by").value
+        == "<@123>"
+    )
+
+    reconstructed_tracker = main.EventTracker()
+    persisted_message = SimpleNamespace(
+        id=555,
+        channel=SimpleNamespace(id=888),
+        created_at=datetime(2024, 2, 1, 12, 0, 0, tzinfo=timezone.utc),
+        embeds=[persisted_embed],
+        reactions=[],
+    )
+    assert await reconstructed_tracker._process_message_for_events(
+        persisted_message, is_historical=True
+    )
+    reconstructed_event = reconstructed_tracker.events[event_id]
+    assert reconstructed_event["name"] == "Test Backfill Event"
+    assert reconstructed_event["creator_id"] == 123
+    assert reconstructed_event["created_at"] == created_at.timestamp()
+    assert reconstructed_event["manual_attendance"] == event["manual_attendance"]
+
+    monkeypatch.setattr(main, "event_tracker", reconstructed_tracker)
+    summary_events, summary_title = await main._get_events_from_args(DummyCtx(), event_id)
+    assert summary_title == "Single Event: Test Backfill Event"
+    assert summary_events == [reconstructed_event]
+
+    legacy_payload = persisted_embed.to_dict()
+    legacy_payload["fields"][0]["name"] = "Original Creator"
+    legacy_embed = discord.Embed.from_dict(legacy_payload)
+    legacy_tracker = main.EventTracker()
+    legacy_message = SimpleNamespace(
+        id=555,
+        channel=SimpleNamespace(id=888),
+        created_at=persisted_message.created_at,
+        embeds=[legacy_embed],
+        reactions=[],
+    )
+    assert await legacy_tracker._process_message_for_events(legacy_message, is_historical=True)
+    assert legacy_tracker.events[event_id]["creator_id"] == 123
 
     # Verify bot reactions added to the new message
     # In the code, event_message is the one that gets reactions

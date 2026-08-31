@@ -29,6 +29,13 @@ from .config import (
     REMINDER_OPT_OUT_FILE,
 )
 from .events.models import Event
+from .events.persistence import (
+    CREATED_BY_FIELD,
+    MANUAL_ATTENDANCE_FIELD,
+    is_backfill_event_id,
+    normalize_reconstructed_event_name,
+    parse_event_creator_id,
+)
 from .events.reminders import handle_event_reminder
 from .events.scoring import calculate_event_weighted_scores as calculate_domain_event_scores
 from .events.service import EventService
@@ -1185,45 +1192,39 @@ class EventTracker:
 
         manual_attendance_users = []
         for field in embed.fields:
-            if field.name == "Created by":
-                # Extract user ID from mention
-                creator_mention = field.value
-                if creator_mention.startswith("<@") and creator_mention.endswith(">"):
-                    creator_id = int(creator_mention[2:-1])
-            elif field.name == "Manual Attendance":
+            parsed_creator_id = parse_event_creator_id(field.name, field.value)
+            if parsed_creator_id is not None:
+                creator_id = parsed_creator_id
+            elif field.name == MANUAL_ATTENDANCE_FIELD:
                 # Extract manual attendance from embed field
                 manual_attendance = field.value
                 for user_entry in manual_attendance.split(', '):
                     user_entry = user_entry.strip()
-                    # Check if this is the new emoji format (e.g., "emoji username")
-                    if user_entry.startswith('<:') or user_entry.startswith(':'):
-                        # New emoji format - extract username and determine multiplier from emoji
-                        parts = user_entry.split(' ', 1)
-                        if len(parts) == 2:
-                            emoji_str = parts[0]
-                            user_name = parts[1]
-                            # Determine multiplier from emoji
-                            multiplier = 1.0  # Default
-                            if emoji_str == str(hundred_emoji) or EMOJI_HUNDRED in emoji_str:
-                                multiplier = 1.0
-                            elif (
-                                emoji_str == str(seventy_five_emoji)
-                                or EMOJI_SEVENTY_FIVE in emoji_str
-                            ):
-                                multiplier = 0.75
-                            elif emoji_str == str(fifty_emoji) or EMOJI_FIFTY in emoji_str:
-                                multiplier = 0.5
-                            elif (
-                                emoji_str == str(twenty_five_emoji)
-                                or EMOJI_TWENTY_FIVE in emoji_str
-                            ):
-                                multiplier = 0.25
-                            manual_attendance_users.append(
-                                {'name': user_name, 'multiplier': multiplier}
-                            )
-                        else:
-                            # Fallback if parsing fails
-                            manual_attendance_users.append({'name': user_entry, 'multiplier': 1.0})
+                    parts = user_entry.split(' ', 1)
+                    emoji_str = parts[0]
+                    user_name = parts[1] if len(parts) == 2 else None
+
+                    # Backfills display both custom and unicode participation emoji.
+                    # Parse either form, while keeping legacy username-only entries.
+                    multiplier = None
+                    if emoji_str == str(hundred_emoji) or EMOJI_HUNDRED in emoji_str:
+                        multiplier = 1.0
+                    elif emoji_str == str(seventy_five_emoji) or EMOJI_SEVENTY_FIVE in emoji_str:
+                        multiplier = 0.75
+                    elif emoji_str == str(fifty_emoji) or EMOJI_FIFTY in emoji_str:
+                        multiplier = 0.5
+                    elif emoji_str == str(twenty_five_emoji) or EMOJI_TWENTY_FIVE in emoji_str:
+                        multiplier = 0.25
+
+                    if user_name is not None and multiplier is not None:
+                        manual_attendance_users.append(
+                            {'name': user_name, 'multiplier': multiplier}
+                        )
+                    elif user_entry.startswith('<:') or user_entry.startswith(':'):
+                        # Preserve the historic fallback for unrecognized emoji records.
+                        manual_attendance_users.append(
+                            {'name': user_name or user_entry, 'multiplier': 1.0}
+                        )
                     else:
                         # Old format (just username)
                         manual_attendance_users.append({'name': user_entry, 'multiplier': 1.0})
@@ -1232,8 +1233,14 @@ class EventTracker:
         if not creator_id:
             return False
 
-        # Extract timestamp from event_id (format: message_id_timestamp)
-        created_at_timestamp = message.created_at.timestamp()
+        event_name = normalize_reconstructed_event_name(event_id, event_name)
+
+        # Backfill embeds persist the original event time in their timestamp. Ordinary
+        # event embeds do not, so retain their message creation time for compatibility.
+        if is_backfill_event_id(event_id) and embed.timestamp is not None:
+            created_at_timestamp = embed.timestamp.timestamp()
+        else:
+            created_at_timestamp = message.created_at.timestamp()
 
         # Create event entry
         event = {
@@ -1843,7 +1850,7 @@ async def create_event_with_multiplier(
         description=f"React with {hundred_emoji} {seventy_five_emoji} {fifty_emoji} {twenty_five_emoji} to register your attendance!\n{hundred_emoji} is full attendance, the others are partial attendance.",
         color=color,
     )
-    embed.add_field(name="Created by", value=ctx.author.mention, inline=True)
+    embed.add_field(name=CREATED_BY_FIELD, value=ctx.author.mention, inline=True)
 
     embed.add_field(name="📊Summary", value=f"`!summary {event_id}`", inline=True)
     embed.set_footer(text=f"Event ID: {event_id}")
@@ -2540,7 +2547,7 @@ async def backfill(ctx, event_type: str, message_id: int):
             description=f"This event was backfilled from message ID `{message_id}`.\nReact below if you missed it on the original message!",
             color=color,
         )
-        embed.add_field(name="Original Creator", value=target_message.author.mention, inline=True)
+        embed.add_field(name=CREATED_BY_FIELD, value=target_message.author.mention, inline=True)
         embed.add_field(name="Backfilled by", value=ctx.author.mention, inline=True)
         embed.add_field(name="📊Summary", value=f"`!summary {event_id}`", inline=True)
         embed.set_footer(text=f"Event ID: {event_id}")
