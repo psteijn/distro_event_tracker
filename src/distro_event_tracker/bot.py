@@ -28,6 +28,16 @@ from .config import (
     ITEMS_CSV,
     REMINDER_OPT_OUT_FILE,
 )
+from .dibs.persistence import (
+    CUSTOM_DIBS_PREFIX,
+    DIBS_DATA_TITLE,
+    DIBS_DATA_URL,
+    DIBS_LEGACY_DATA_URL,
+    build_dibs_data_chunks,
+    decode_dibs_data_url,
+    parse_dibs_data_block_position,
+)
+from .dibs.summary import DIBS_SUMMARY_TITLE, build_dibs_summary_pages
 from .events.models import Event
 from .events.persistence import (
     CREATED_BY_FIELD,
@@ -106,6 +116,7 @@ class EventBot(commands.Bot):
 
 
 bot = EventBot(command_prefix=BOT_PREFIX, intents=intents, case_insensitive=True)
+_dibs_refresh_lock = asyncio.Lock()
 
 
 def register_dibs_tree_command(*args, **kwargs):
@@ -158,140 +169,145 @@ async def refresh_dibs_summary(
         )
         return
 
-    # Delete old summary and data messages
-    deleted_summary_messages = 0
-    deleted_data_messages = 0
-    try:
-        async for message in channel.history(limit=50):
-            if message.author == bot.user and message.embeds:
-                embed = message.embeds[0]
-                is_summary = embed.title == "📦 Current Dibs Summary"
-                is_data = False
-                if (
-                    embed.footer
-                    and getattr(embed.footer, 'icon_url', None)
-                    and "https://dibs.data?payload=" in embed.footer.icon_url
-                ):
-                    is_data = True
-                if embed.description and "http://dibs.data?payload=" in embed.description:
-                    is_data = True
-                if embed.title == "⚙️ Dibs System Data (DO NOT DELETE)":
-                    is_data = True
-                if embed.footer and embed.footer.text and embed.footer.text.startswith("DATA:"):
-                    is_data = True
+    async with _dibs_refresh_lock:
+        # Commands may mutate the live tracker while a preceding refresh is sending.
+        # A snapshot keeps each persisted and human-readable replacement internally consistent.
+        dibs_snapshot = {
+            user_id: dict(user_dibs) for user_id, user_dibs in dibs_tracker.dibs.items()
+        }
+        data_embeds = _build_dibs_data_embeds(dibs_snapshot)
+        summary_embeds = _build_dibs_summary_embeds(dibs_snapshot)
 
+        old_messages = []
+        old_summary_messages = 0
+        old_data_messages = 0
+        try:
+            async for message in channel.history(limit=100):
+                if message.author != bot.user or not message.embeds:
+                    continue
+                is_summary, is_data = _classify_dibs_embed(message.embeds[0])
                 if is_summary or is_data:
-                    await message.delete()
-                    if is_summary:
-                        deleted_summary_messages += 1
-                    if is_data:
-                        deleted_data_messages += 1
-    except Exception as e:
-        logger.error(f"❌ Error deleting old dibs summary: {e}")
+                    old_messages.append(message)
+                    old_summary_messages += int(is_summary)
+                    old_data_messages += int(is_data)
+        except Exception as exc:
+            logger.error("❌ Error finding old dibs messages: %s", exc)
 
-    # 1. Send the Data Message(s) (Machine readable persistence)
-    # We split the dibs state into multiple chunks to stay safely under Discord's 2,048 character footer icon_url limit.
-    import json
+        logger.info(
+            "DIBS SUMMARY REFRESH REBUILD reason=%s channel_id=%s "
+            "old_summary_messages=%s old_data_messages=%s data_chunks=%s summary_pages=%s",
+            refresh_reason,
+            channel.id,
+            old_summary_messages,
+            old_data_messages,
+            len(data_embeds),
+            len(summary_embeds),
+        )
+
+        replacement_messages = []
+        try:
+            for data_embed in data_embeds:
+                replacement = await channel.send(embed=data_embed)
+                if replacement is not None:
+                    replacement_messages.append(replacement)
+            for summary_embed in summary_embeds:
+                replacement = await channel.send(embed=summary_embed)
+                if replacement is not None:
+                    replacement_messages.append(replacement)
+        except Exception:
+            logger.exception(
+                "DIBS SUMMARY REFRESH FAILED reason=%s channel_id=%s stage=send_replacement",
+                refresh_reason,
+                channel.id,
+            )
+            for replacement in reversed(replacement_messages):
+                try:
+                    await replacement.delete()
+                except Exception as cleanup_exc:
+                    logger.error("❌ Error cleaning up partial dibs replacement: %s", cleanup_exc)
+            raise
+
+        deleted_summary_messages = 0
+        deleted_data_messages = 0
+        for message in old_messages:
+            is_summary, is_data = _classify_dibs_embed(message.embeds[0])
+            try:
+                await message.delete()
+                deleted_summary_messages += int(is_summary)
+                deleted_data_messages += int(is_data)
+            except Exception as exc:
+                logger.error("❌ Error deleting old dibs message: %s", exc)
+
+        logger.info(
+            "DIBS SUMMARY REFRESH COMPLETE reason=%s channel_id=%s users=%s entries=%s "
+            "data_chunks=%s summary_pages=%s deleted_summary_messages=%s "
+            "deleted_data_messages=%s",
+            refresh_reason,
+            channel.id,
+            len(dibs_snapshot),
+            sum(len(user_dibs) for user_dibs in dibs_snapshot.values()),
+            len(data_embeds),
+            len(summary_embeds),
+            deleted_summary_messages,
+            deleted_data_messages,
+        )
+
+
+def _classify_dibs_embed(embed) -> tuple[bool, bool]:
+    is_summary = embed.title == DIBS_SUMMARY_TITLE
+    icon_url = getattr(embed.footer, 'icon_url', None) if embed.footer else None
+    footer_text = getattr(embed.footer, 'text', None) if embed.footer else None
+    is_data = bool(icon_url and DIBS_DATA_URL in icon_url)
+    if embed.description and DIBS_LEGACY_DATA_URL in embed.description:
+        is_data = True
+    if embed.title == "⚙️ Dibs System Data (DO NOT DELETE)":
+        is_data = True
+    if footer_text and footer_text.startswith("DATA:"):
+        is_data = True
+    return is_summary, is_data
+
+
+def _build_dibs_data_embeds(dibs_snapshot: dict[int, dict[str, object]]) -> list[discord.Embed]:
     import urllib.parse
 
-    chunks = []
-    current_chunk = {}
-    for uid, user_dibs in dibs_tracker.dibs.items():
-        test_chunk = current_chunk.copy()
-        test_chunk[str(uid)] = user_dibs
-        test_json = json.dumps(test_chunk)
-        # 800 characters allows room for URL encoding expansion
-        if len(test_json) > 800:
-            if current_chunk:
-                chunks.append(current_chunk)
-            current_chunk = {str(uid): user_dibs}
-        else:
-            current_chunk[str(uid)] = user_dibs
+    chunks = build_dibs_data_chunks(dibs_snapshot)
 
-    if current_chunk or not chunks:
-        chunks.append(current_chunk)
-
-    logger.info(
-        "DIBS SUMMARY REFRESH REBUILD reason=%s channel_id=%s deleted_summary_messages=%s deleted_data_messages=%s data_chunks=%s",
-        refresh_reason,
-        channel.id,
-        deleted_summary_messages,
-        deleted_data_messages,
-        len(chunks),
-    )
-
-    for i, chunk in enumerate(chunks):
-        chunk_json = json.dumps(chunk)
-        encoded_data = urllib.parse.quote(chunk_json)
-
-        title_str = (
-            "⚙️ System Data Block"
-            if len(chunks) == 1
-            else f"⚙️ System Data Block ({i+1}/{len(chunks)})"
+    embeds = []
+    for index, chunk in enumerate(chunks, start=1):
+        encoded_data = urllib.parse.quote(json.dumps(chunk))
+        title = (
+            DIBS_DATA_TITLE if len(chunks) == 1 else f"{DIBS_DATA_TITLE} ({index}/{len(chunks)})"
         )
         data_embed = discord.Embed(
-            title=title_str,
+            title=title,
             description="This message is used for tracking bot state. **Do not delete or modify.**",
-            color=0x2B2D31,  # Matches Discord Dark Mode background
+            color=0x2B2D31,
         )
         data_embed.set_footer(
-            text="⚙️ System Metadata (Ignore)", icon_url=f"https://dibs.data?payload={encoded_data}"
+            text="⚙️ System Metadata (Ignore)",
+            icon_url=f"{DIBS_DATA_URL}{encoded_data}",
         )
-        await channel.send(embed=data_embed)
+        embeds.append(data_embed)
+    return embeds
 
-    # 2. Send the Summary Message (Human readable view)
-    summary_embed = discord.Embed(
-        title="📦 Current Dibs Summary",
-        description="Here is the list of current dibs for all players.",
-        color=discord.Color.gold(),
-    )
 
-    if not dibs_tracker.dibs:
-        summary_embed.description = "No active dibs."
-    else:
-        # Build a map of item_name -> list of (user_id, qty)
-        item_to_users = {}
-        for user_id, user_dibs in dibs_tracker.dibs.items():
-            for item, qty in user_dibs.items():
-                if item not in item_to_users:
-                    item_to_users[item] = []
-                item_to_users[item].append((user_id, qty))
-
-        def format_claim_line(item: str, *, custom: bool = False) -> str:
-            claims = []
-            for user_id, qty in item_to_users[item]:
-                qty_str = str(qty) if qty else "Any"
-                claims.append(f"<@{user_id}> ({qty_str})")
-
-            claims_str = ", ".join(claims)
-            display_item = (
-                item[len(CUSTOM_DIBS_PREFIX) :]
-                if custom
-                else DibsTracker.display_dib_item_name(item)
-            )
-            return f"**{display_item}** | {claims_str}"
-
-        standard_items = sorted(
-            item for item in item_to_users if not item.startswith(CUSTOM_DIBS_PREFIX)
+def _build_dibs_summary_embeds(
+    dibs_snapshot: dict[int, dict[str, object]],
+) -> list[discord.Embed]:
+    descriptions = build_dibs_summary_pages(dibs_snapshot)
+    timestamp = datetime.now(PACIFIC_TZ)
+    embeds = []
+    for index, description in enumerate(descriptions, start=1):
+        summary_embed = discord.Embed(
+            title=DIBS_SUMMARY_TITLE,
+            description=description,
+            color=discord.Color.gold(),
+            timestamp=timestamp,
         )
-        custom_items = sorted(item for item in item_to_users if item.startswith(CUSTOM_DIBS_PREFIX))
-
-        lines = [format_claim_line(item) for item in standard_items]
-        if custom_items:
-            lines.extend(["", "**Custom Dibs**"])
-            lines.extend(format_claim_line(item, custom=True) for item in custom_items)
-
-        summary_embed.description = "\n".join(lines)
-
-    summary_embed.timestamp = datetime.now(PACIFIC_TZ)
-    await channel.send(embed=summary_embed)
-    logger.info(
-        "DIBS SUMMARY REFRESH COMPLETE reason=%s channel_id=%s users=%s entries=%s",
-        refresh_reason,
-        channel.id,
-        len(dibs_tracker.dibs),
-        _count_total_dibs_entries(),
-    )
+        if len(descriptions) > 1:
+            summary_embed.set_footer(text=f"Page {index} of {len(descriptions)}")
+        embeds.append(summary_embed)
+    return embeds
 
 
 async def item_autocomplete(
@@ -1497,65 +1513,92 @@ class DibsTracker:
 
         found_any = False
         self.dibs = {}  # Clear local state to rebuild from history
+        pending_blocks: dict[int, dict[int, dict[str, object]]] = {}
+        pending_total: int | None = None
 
         async for message in channel.history(limit=100):
-            if message.author == bot.user and message.embeds:
-                embed = message.embeds[0]
+            if message.author != bot.user or not message.embeds:
+                continue
 
-                # 1. Try to find the new icon_url-based data format in the footer
-                icon_url = getattr(embed.footer, 'icon_url', None) if embed.footer else None
-                if icon_url and "https://dibs.data?payload=" in icon_url:
+            embed = message.embeds[0]
+            if embed.title == DIBS_SUMMARY_TITLE and pending_total is not None:
+                # A summary separates snapshots. An incomplete newer snapshot is ignored
+                # so reconstruction can fall back to the preceding complete one.
+                pending_blocks = {}
+                pending_total = None
+                continue
+
+            # 1. Current icon_url-based data format. Multi-block snapshots are accepted
+            # only when every numbered block is present.
+            icon_url = getattr(embed.footer, 'icon_url', None) if embed.footer else None
+            if icon_url and DIBS_DATA_URL in icon_url:
+                position = parse_dibs_data_block_position(embed.title)
+                if position is None:
+                    # Early current-format messages did not consistently have a block title
+                    # and always contained a complete snapshot in one message.
+                    if embed.title and embed.title.startswith(DIBS_DATA_TITLE):
+                        logger.error(
+                            "❌ Error parsing icon_url-based dibs data: invalid block title"
+                        )
+                        continue
                     try:
-                        import urllib.parse
+                        self.dibs = decode_dibs_data_url(icon_url)
+                        found_any = True
+                        break
+                    except Exception as exc:
+                        logger.error("❌ Error parsing icon_url-based dibs data: %s", exc)
+                        continue
 
-                        parsed_url = urllib.parse.urlparse(icon_url)
-                        query_params = urllib.parse.parse_qs(parsed_url.query)
-                        if "payload" in query_params:
-                            data_str = query_params["payload"][0]
-                            raw_data = json.loads(data_str)
-                            for uid, dibs_data in raw_data.items():
-                                self.dibs[int(uid)] = dibs_data
-                            found_any = True
-                    except Exception as e:
-                        logger.error(f"❌ Error parsing icon_url-based dibs data: {e}")
+                block_index, block_total = position
+                if pending_total is None or pending_total != block_total:
+                    pending_blocks = {}
+                    pending_total = block_total
+
+                try:
+                    pending_blocks[block_index] = decode_dibs_data_url(icon_url)
+                except Exception as exc:
+                    logger.error("❌ Error parsing icon_url-based dibs data: %s", exc)
                     continue
 
-                # 2. Try to find the description link-based data format
-                if embed.description and "http://dibs.data?payload=" in embed.description:
+                expected_indexes = set(range(1, pending_total + 1))
+                if set(pending_blocks) == expected_indexes:
+                    reconstructed: dict[int, dict[str, object]] = {}
+                    for index in sorted(pending_blocks):
+                        for user_id, claims in pending_blocks[index].items():
+                            reconstructed.setdefault(user_id, {}).update(claims)
+                    self.dibs = reconstructed
+                    found_any = True
+                    break
+                continue
+
+            # 2. Legacy description link-based data format.
+            if embed.description and DIBS_LEGACY_DATA_URL in embed.description:
+                try:
+                    start = embed.description.find(DIBS_LEGACY_DATA_URL)
+                    end = embed.description.find(")", start)
+                    if end != -1:
+                        self.dibs = decode_dibs_data_url(embed.description[start:end])
+                        found_any = True
+                        break
+                except Exception as exc:
+                    logger.error("❌ Error parsing link-based dibs data: %s", exc)
+                continue
+
+            # 3. Legacy footer-based data format.
+            footer_text = getattr(embed.footer, 'text', None) if embed.footer else None
+            if embed.title == "⚙️ Dibs System Data (DO NOT DELETE)" or (
+                footer_text and footer_text.startswith("DATA:")
+            ):
+                if footer_text and footer_text.startswith("DATA:"):
                     try:
-                        import urllib.parse
-
-                        start = embed.description.find("http://dibs.data?payload=")
-                        end = embed.description.find(")", start)
-                        if end != -1:
-                            url = embed.description[start:end]
-                            parsed_url = urllib.parse.urlparse(url)
-                            query_params = urllib.parse.parse_qs(parsed_url.query)
-                            if "payload" in query_params:
-                                data_str = query_params["payload"][0]
-                                raw_data = json.loads(data_str)
-                                for uid, dibs_data in raw_data.items():
-                                    self.dibs[int(uid)] = dibs_data
-                                found_any = True
-                    except Exception as e:
-                        logger.error(f"❌ Error parsing link-based dibs data: {e}")
-                    continue
-
-                # 3. Fallback: Try the legacy footer-based data format
-                if embed.title == "⚙️ Dibs System Data (DO NOT DELETE)" or (
-                    embed.footer and embed.footer.text and embed.footer.text.startswith("DATA:")
-                ):
-                    if embed.footer and embed.footer.text:
-                        footer_text = embed.footer.text
-                        if footer_text.startswith("DATA:"):
-                            try:
-                                data_str = footer_text.replace("DATA:", "")
-                                raw_data = json.loads(data_str)
-                                for uid, dibs_data in raw_data.items():
-                                    self.dibs[int(uid)] = dibs_data
-                                found_any = True
-                            except Exception as e:
-                                logger.error(f"❌ Error parsing legacy footer-based dibs data: {e}")
+                        raw_data = json.loads(footer_text.removeprefix("DATA:"))
+                        if not isinstance(raw_data, dict):
+                            raise ValueError("Legacy dibs payload must be a JSON object")
+                        self.dibs = {int(user_id): claims for user_id, claims in raw_data.items()}
+                        found_any = True
+                        break
+                    except Exception as exc:
+                        logger.error("❌ Error parsing legacy footer-based dibs data: %s", exc)
 
         if found_any:
             logger.info(f"✅ Successfully reconstructed dibs state for {len(self.dibs)} users.")
@@ -1681,9 +1724,6 @@ async def resolve_user_name(user_id: int, guild: Optional[discord.Guild] = None)
         pass
 
     return f"UnknownUser_{user_id}"
-
-
-CUSTOM_DIBS_PREFIX = "__custom__:"
 
 
 @bot.command(name='dibs_data')

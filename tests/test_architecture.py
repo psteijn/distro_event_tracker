@@ -8,6 +8,7 @@ PURE_MODULES = [
     "src/distro_event_tracker/events/scoring.py",
     "src/distro_event_tracker/dibs/models.py",
     "src/distro_event_tracker/dibs/persistence.py",
+    "src/distro_event_tracker/dibs/summary.py",
 ]
 
 COG_MODULES = [
