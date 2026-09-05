@@ -17,3 +17,5 @@ description: Deploy, dry-run, roll back, or explicitly synchronize configuration
 10. MicroK8s was permanently removed in July 2026. Do not use or recreate the retired migration tooling.
 11. Successful deployments retain five immutable releases and matching image tags, then prune dangling rootless image layers. Do not manually delete retained releases or migration backups.
 12. If a normal release fails the bounded gate, the deployment script automatically restores both bots to the prior retained release. Explicit rollback and secrets-only failures require diagnosis rather than recursive rollback.
+
+Use `ops/remote.ps1` with explicit psteijn runtime access. Protected host diagnostics go through `ops/remote-admin.ps1` as codex/root. See `docs/server-access.md`; never change the shared alias user.

@@ -14,3 +14,5 @@ description: Inspect and operate the production distro and ocean Discord bots as
 7. Verify reminder opt-out persistence by comparing checksums or metadata before and after service recreation; do not display user IDs.
 8. Never edit release directories, Quadlets, environment files, container filesystems, or live generated units by hand. Route lasting changes through a committed deployment.
 9. MicroK8s is intentionally absent. Report its reappearance as unexpected infrastructure drift.
+
+Use `ops/remote.ps1` with explicit psteijn runtime access. Protected host diagnostics go through `ops/remote-admin.ps1` as codex/root. See `docs/server-access.md`; never change the shared alias user.

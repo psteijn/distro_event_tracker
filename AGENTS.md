@@ -28,3 +28,11 @@ Deployment is separate and must only run when explicitly requested.
 - Normal deployments use a bounded two-minute startup gate: expected image, healthy service, Discord connection, three reconstructed events, and no new error-level startup signals. Use `deploy.ps1 -VerifyFullInitialization` only when the final reconstruction marker must be verified.
 - A failed bounded release deployment automatically rolls both bots back to the prior retained release. Explicit `-Rollback` and `-SecretsOnly` commands still require operator diagnosis if their own startup checks fail.
 - Use `ops/remote-status.ps1` for read-only status and the deployment and operations skills for production changes and diagnostics.
+
+## SSH account selection
+
+Follow [the server access contract](docs/server-access.md). Every operational SSH/SCP call uses
+`steijnserver` with an explicit account: `codex` for administration, `psteijn`
+for distro runtime and Home Assistant transfers. Keep shared alias defaults at psteijn.
+Use the repository transport helper and `sudo -n`; never change workload ownership
+or add public network exposure to work around permissions.

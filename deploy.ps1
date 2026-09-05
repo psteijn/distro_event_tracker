@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $RepoRoot = $PSScriptRoot
-$SshTarget = 'steijnserver'
+. (Join-Path $RepoRoot 'ops\remote.ps1')
 $ReleaseBase = '/srv/releases/distro-event-tracker'
 
 if ($DryRun -and ($SyncSecrets -or $SecretsOnly -or $VerifyFullInitialization -or $Rollback)) {
@@ -29,8 +29,7 @@ function Invoke-Native {
 
 function Invoke-Remote {
     param([Parameter(Mandatory)][string]$Command)
-    & ssh -o BatchMode=yes $SshTarget $Command
-    if ($LASTEXITCODE -ne 0) { throw "Remote command failed (exit code $LASTEXITCODE)." }
+    (Invoke-DistroRuntime -Command $Command).Stdout | Write-Host
 }
 
 function Sync-PodmanEnvironment {
@@ -43,27 +42,7 @@ function Sync-PodmanEnvironment {
     }
 
     $remoteCommand = 'set -eu; dir="$HOME/.config/distro-event-tracker"; install -d -m 700 "$dir"; umask 077; tmp="$dir/.{0}.env.tmp"; tr -d ''\r'' > "$tmp"; chmod 600 "$tmp"; mv -f "$tmp" "$dir/{0}.env"' -f $Instance
-    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = (Get-Command ssh -ErrorAction Stop).Source
-    $startInfo.Arguments = '-o BatchMode=yes {0} "{1}"' -f $SshTarget, $remoteCommand
-    $startInfo.UseShellExecute = $false
-    $startInfo.RedirectStandardInput = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    $startInfo.CreateNoWindow = $true
-
-    $process = [System.Diagnostics.Process]::new()
-    $process.StartInfo = $startInfo
-    if (-not $process.Start()) { throw "Unable to start SSH for $Instance configuration synchronization." }
-    $process.StandardInput.Write([System.IO.File]::ReadAllText($EnvFile))
-    $process.StandardInput.Close()
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
-    if ($process.ExitCode -ne 0) {
-        throw ('Configuration synchronization failed for {0}: {1}' -f $Instance, $stderr)
-    }
-    if ($stdout.Trim()) { Write-Host $stdout.Trim() }
+    Invoke-ServerCommand -User psteijn -Command $remoteCommand -StandardInput ([System.IO.File]::ReadAllText($EnvFile)) | Out-Null
 }
 
 function Sync-AllEnvironments {
@@ -93,7 +72,7 @@ function Send-ReleaseArchive {
         $archive = Join-Path $tempDirectory "$Revision.tar"
         Invoke-Native { git archive --format=tar --output=$archive $Revision } 'Unable to create release archive'
         $remoteArchive = "/home/psteijn/$Revision.tar"
-        Invoke-Native { scp -q -- $archive ($SshTarget + ':' + $remoteArchive) } 'Unable to transfer release archive'
+        Copy-ServerFile -User psteijn -LocalPath $archive -RemotePath $remoteArchive
         if ($Temporary) {
             $command = 'set -eu; archive=''{0}''; work=$(mktemp -d); trap ''rm -rf -- "$work" "$archive"'' EXIT; tar -xf "$archive" -C "$work"; echo -n ''{1}'' > "$work/.release-revision"; RELEASE_ROOT="$work" bash "$work/ops/podman/deploy.sh" ''{1}'' --dry-run' -f $remoteArchive, $Revision
             Invoke-Remote $command
@@ -111,7 +90,7 @@ function Send-ReleaseArchive {
 
 Push-Location $RepoRoot
 try {
-    Invoke-Remote 'true'
+    Assert-DistroRuntime
     if ($SecretsOnly) {
         Sync-AllEnvironments
         $verifyMode = if ($VerifyFullInitialization) { 'full' } else { 'fast' }

@@ -5,8 +5,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'remote.ps1')
+Assert-DistroRuntime
 $script = @'
-set -u
+set -eu
+cd "$HOME"
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 since="$1"
 echo "ROOTLESS_USER_MANAGER"
 loginctl show-user "$(id -un)" -p Linger
@@ -46,23 +51,4 @@ else
 fi
 '@
 
-$startInfo = [System.Diagnostics.ProcessStartInfo]::new()
-$startInfo.FileName = (Get-Command ssh -ErrorAction Stop).Source
-$startInfo.Arguments = "-o BatchMode=yes steijnserver bash -s -- $Since"
-$startInfo.UseShellExecute = $false
-$startInfo.RedirectStandardInput = $true
-$startInfo.RedirectStandardOutput = $true
-$startInfo.RedirectStandardError = $true
-$startInfo.CreateNoWindow = $true
-$process = [System.Diagnostics.Process]::new()
-$process.StartInfo = $startInfo
-if (-not $process.Start()) { throw 'Unable to start remote status check.' }
-$process.StandardInput.Write($script)
-$process.StandardInput.Close()
-$stdout = $process.StandardOutput.ReadToEnd()
-$stderr = $process.StandardError.ReadToEnd()
-$process.WaitForExit()
-if ($stdout) { Write-Host $stdout.TrimEnd() }
-if ($process.ExitCode -ne 0) {
-    throw "Remote status check failed (exit code $($process.ExitCode)): $stderr"
-}
+(Invoke-ServerCommand -User psteijn -Command "bash -se -- $Since" -StandardInput $script.Replace("`r", '')).Stdout | Write-Host

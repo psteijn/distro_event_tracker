@@ -173,3 +173,8 @@ create `.venv` when needed and never require production configuration.
 ## 🔒 Security Note
 - Never commit your `.env` files.
 - The project includes a `.gitignore` that automatically excludes `.env*` and all `*.log` files to protect your tokens and local data.
+
+## Passwordless operations
+
+See the [server access contract](docs/server-access.md) for explicit accounts, non-interactive
+SSH, recovery, and deployment verification. Never repoint the shared alias to codex.

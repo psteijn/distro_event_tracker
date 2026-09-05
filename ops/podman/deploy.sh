@@ -6,6 +6,16 @@ if [[ $# -lt 1 || $# -gt 2 ]]; then
   exit 2
 fi
 
+[[ "$(id -un)" == psteijn && "$HOME" == /home/psteijn ]] || {
+  echo "Deployment requires the psteijn login and home directory." >&2
+  exit 1
+}
+cd "$HOME"
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+[[ -S "$XDG_RUNTIME_DIR/bus" ]] || { echo "User bus is unavailable." >&2; exit 1; }
+systemctl --user show-environment >/dev/null
+
 RELEASE_SHA="$1"
 MODE="${2:-apply}"
 if [[ ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
