@@ -465,8 +465,14 @@ class PlanningCog(commands.Cog, name="Planning"):
     @staticmethod
     def _reaction_index(emoji) -> int | None:
         name = getattr(emoji, "name", None)
-        if name and name.isdigit() and 1 <= int(name) <= MAX_PLAN_BLOCKS:
-            return int(name) - 1
+        if name:
+            if name.startswith("ice_") and name.removeprefix("ice_").isdigit():
+                number = int(name.removeprefix("ice_"))
+                if 1 <= number <= MAX_PLAN_BLOCKS:
+                    return number - 1
+            # Existing planning cards used custom emoji names such as :1:.
+            if name.isdigit() and 1 <= int(name) <= MAX_PLAN_BLOCKS:
+                return int(name) - 1
         try:
             return NUMBER_EMOJIS.index(str(emoji))
         except ValueError:
@@ -475,7 +481,9 @@ class PlanningCog(commands.Cog, name="Planning"):
     @staticmethod
     def _custom_emojis(guild, count: int):
         emojis = {emoji.name: emoji for emoji in guild.emojis}
-        missing = [str(index) for index in range(1, count + 1) if str(index) not in emojis]
+        names = [f"ice_{index}" for index in range(1, count + 1)]
+        missing = [name for name in names if name not in emojis]
         if missing:
-            raise ValueError("This server needs custom emojis named " + ", ".join(missing) + ".")
-        return [emojis[str(index)] for index in range(1, count + 1)]
+            formatted = ", ".join(f":{name}:" for name in missing)
+            raise ValueError("This server needs custom emojis named " + formatted + ".")
+        return [emojis[name] for name in names]

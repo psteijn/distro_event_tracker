@@ -59,6 +59,35 @@ def test_scheduled_notification_card_is_self_contained_and_personalized():
     ]
 
 
+def test_custom_emojis_use_ice_number_names():
+    ice_one = SimpleNamespace(name="ice_1")
+    ice_two = SimpleNamespace(name="ice_2")
+
+    assert PlanningCog._custom_emojis(SimpleNamespace(emojis=[ice_two, ice_one]), 2) == [
+        ice_one,
+        ice_two,
+    ]
+
+
+def test_custom_emojis_report_missing_ice_number_names():
+    with pytest.raises(ValueError, match=r"custom emojis named :ice_1:, :ice_2:"):
+        PlanningCog._custom_emojis(SimpleNamespace(emojis=[]), 2)
+
+
+@pytest.mark.parametrize(
+    ("emoji", "expected"),
+    [
+        (SimpleNamespace(name="ice_1"), 0),
+        (SimpleNamespace(name="ice_20"), 19),
+        (SimpleNamespace(name="1"), 0),
+        (SimpleNamespace(name="20"), 19),
+        (SimpleNamespace(name="ice_21"), None),
+    ],
+)
+def test_reaction_index_accepts_ice_emojis_and_legacy_numeric_emojis(emoji, expected):
+    assert PlanningCog._reaction_index(emoji) == expected
+
+
 @pytest.mark.asyncio
 async def test_post_draft_uses_interaction_permissions_when_creator_is_not_cached(monkeypatch):
     permissions = SimpleNamespace(
