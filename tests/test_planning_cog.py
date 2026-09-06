@@ -110,7 +110,7 @@ def test_scheduled_notification_card_is_self_contained_and_personalized():
 
     assert embed.title == "Bosses is happening!"
     assert embed.description == "Distro · Led by <@3>"
-    assert embed.footer.text == "All times below are shown in your local timezone."
+    assert embed.footer.text == "All times are in your local timezone."
     assert [(field.name, field.value) for field in embed.fields] == [
         ("When", "<t:1789237800:f> – <t:1789241400:f>"),
         (

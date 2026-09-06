@@ -24,6 +24,7 @@ from .planning import (
     whole_event_users,
 )
 from .planning_display import (
+    DM_TIME_NOTE,
     LOCAL_TIME_NOTE,
     ZERO_WIDTH_SPACE,
     availability_legend,
@@ -176,7 +177,7 @@ class PlanningCog(commands.Cog, name="Planning"):
         if plan.details:
             embed.add_field(name="Details", value=plan.details, inline=False)
         embed.add_field(name="Event plan", value=f"[View event plan]({jump_url})", inline=False)
-        embed.set_footer(text=LOCAL_TIME_NOTE)
+        embed.set_footer(text=DM_TIME_NOTE)
         return embed
 
     @commands.Cog.listener()

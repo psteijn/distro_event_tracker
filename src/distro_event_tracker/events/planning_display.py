@@ -6,6 +6,7 @@ from typing import Sequence
 from .planning import PlanBlock, availability_periods
 
 LOCAL_TIME_NOTE = "All times below are shown in your local timezone."
+DM_TIME_NOTE = "All times are in your local timezone."
 ZERO_WIDTH_SPACE = "\u200b"
 
 
