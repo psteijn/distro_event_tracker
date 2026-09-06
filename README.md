@@ -128,12 +128,12 @@ bot instance's configured event channel.
 
 Set `PLANNING_CHANNEL_ID` to enable `/plan` in one channel. `/plan create` asks the
 organizer privately to choose a timezone, one of today through the next fourteen days,
-and a half-hour availability window. Members react to each block they can attend; the
-card shows every time in each viewer's Discord-local timezone. The leader uses
-`/plan schedule` to choose the final block range and notify members who reacted to an
-overlapping block. Until its picker is redesigned, `/plan schedule` interprets its
-typed start and end values in the timezone stored with the plan (Pacific for older
-planning cards).
+and a half-hour availability window of up to ten hours. Members react to each block
+they can attend; the card shows every time in each viewer's Discord-local timezone and
+a copyable plan ID. The leader uses `/plan schedule start:<slot> end:<slot>` to choose
+an inclusive range of the numbered slots and notify members who reacted to an
+overlapping block. `/plan schedule` and `/plan cancel` use the leader's most recent
+open plan by default; either accepts `id:<plan ID>` to target a specific poll.
 
 ### The Unified `!summary` Command
 The new summary command is context-aware and accepts multiple formats:

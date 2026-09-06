@@ -19,6 +19,7 @@ NUMBER_EMOJIS = (
     "7\ufe0f\u20e3",
     "8\ufe0f\u20e3",
 )
+MAX_PLAN_BLOCKS = 20
 
 
 @dataclass(slots=True, frozen=True)
@@ -95,6 +96,16 @@ def schedule_indices(plan: EventPlan, start: datetime, end: datetime) -> tuple[i
     if last <= first:
         raise ValueError("The end must be after the start.")
     return first, last
+
+
+def schedule_slot_indices(plan: EventPlan, start: int, end: int) -> tuple[int, int]:
+    """Map one-based, inclusive slot numbers to zero-based half-open indexes."""
+    block_count = len(build_blocks(plan.starts_at, plan.ends_at))
+    if not 1 <= start <= end <= block_count:
+        raise ValueError(
+            f"Choose slot numbers from 1 through {block_count}, with start no later than end."
+        )
+    return start - 1, end
 
 
 def availability_periods(

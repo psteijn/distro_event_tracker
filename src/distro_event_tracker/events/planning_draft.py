@@ -5,7 +5,13 @@ from datetime import date, datetime, time, timedelta, timezone
 
 import pytz
 
-from .planning import EventPlan, build_blocks, parse_local_datetime, validate_party_size
+from .planning import (
+    MAX_PLAN_BLOCKS,
+    EventPlan,
+    build_blocks,
+    parse_local_datetime,
+    validate_party_size,
+)
 
 TIMEZONES = {
     "America/Los_Angeles": "Pacific",
@@ -49,18 +55,12 @@ def unique_local(instant: datetime, zone: str) -> bool:
 
 
 def ending_choices(start: datetime, zone: str) -> list[datetime]:
-    """At most eight actual half-hour endings, bounded by local midnight."""
-    local_day = start.astimezone(pytz.timezone(zone)).date()
+    """Return up to ten elapsed hours of valid half-hour endings."""
     values = []
-    for count in range(1, 9):
+    for count in range(1, MAX_PLAN_BLOCKS + 1):
         end = start.astimezone(timezone.utc) + timedelta(minutes=30 * count)
-        local_end = end.astimezone(pytz.timezone(zone))
-        if local_end.date() > local_day and local_end.time() != time(0):
-            break
         if unique_local(end, zone):
             values.append(end)
-        if local_end.date() > local_day:
-            break
     return values
 
 
@@ -110,7 +110,7 @@ class PlanningDraft:
                 "That beginning is no longer available. Please choose your times again."
             )
         if self.end not in ending_choices(self.start, self.input_timezone):
-            raise ValueError("Choose an ending within four hours, no later than midnight.")
+            raise ValueError("Choose an ending within ten hours.")
         build_blocks(self.start, self.end)
 
     def to_plan(self, plan_id: str) -> EventPlan:

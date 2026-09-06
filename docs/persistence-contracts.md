@@ -13,9 +13,11 @@ backward-compatible contracts.
 - Human-readable dibs summaries may span multiple `📦 Current Dibs Summary`
   messages, each bounded to Discord's embed-description limit.
 - `!data` emits `[event_id] [event_type] name: user (score)`.
-- Planning-card footers use `Planning Data: <base64 JSON>`. Version 1 records retain
-  their original start/end instants; records created before the optional `tz` field
-  are interpreted as Pacific for later typed scheduling input.
+- Legacy planning-card footers use `Planning Data: <base64 JSON>`. New planning cards
+  store their reconstruction data in readable fields: plan ID, leader, input timezone,
+  original availability window, optional attributes, and scheduled time. Legacy
+  records retain their original start/end instants; records created before the optional
+  `tz` field are interpreted as Pacific.
 
 Any format change requires a parser that accepts old and new formats plus golden tests
 for reconstruction from existing messages.

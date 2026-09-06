@@ -1,9 +1,11 @@
 import base64
 import json
 
+from distro_event_tracker.events.planning_cog import PlanningCog
 from distro_event_tracker.events.planning_persistence import (
     PLANNING_DATA_PREFIX,
     format_planning_footer,
+    parse_planning_card,
     parse_planning_footer,
 )
 from test_planning import make_plan
@@ -43,3 +45,17 @@ def test_legacy_planning_footer_defaults_input_timezone_to_pacific():
     assert restored.starts_at == plan.starts_at
     assert restored.ends_at == plan.ends_at
     assert restored.input_timezone == "America/Los_Angeles"
+
+
+def test_readable_card_round_trips_without_a_data_footer():
+    plan = make_plan()
+    plan.id = "AbC123dEf456"
+    card = PlanningCog(None, "2")._embed(plan)
+
+    restored = parse_planning_card(card, message_id=99, channel_id=42)
+
+    assert restored is not None
+    assert restored.id == plan.id
+    assert restored.starts_at == plan.starts_at
+    assert restored.ends_at == plan.ends_at
+    assert card.footer.text is None

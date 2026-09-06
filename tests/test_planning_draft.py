@@ -18,19 +18,15 @@ def test_day_choices_include_today_and_next_fourteen_days_across_month_boundary(
     assert choices[-1][0].isoformat() == "2026-02-14"
 
 
-def test_time_choices_are_actual_half_hour_intervals_bounded_by_midnight_and_four_hours():
+def test_time_choices_allow_twenty_half_hour_intervals_and_cross_midnight():
     start = parse_local_datetime("2026-09-12 22:00", "America/Los_Angeles")
     ends = ending_choices(start, "America/Los_Angeles")
 
-    assert [
-        end.astimezone(pytz.timezone("America/Los_Angeles")).strftime("%H:%M") for end in ends
-    ] == [
-        "22:30",
-        "23:00",
-        "23:30",
-        "00:00",
-    ]
-    assert all((end - start).total_seconds() <= 4 * 60 * 60 for end in ends)
+    assert [end.astimezone(pytz.timezone("America/Los_Angeles")).strftime("%H:%M") for end in ends][
+        :4
+    ] == ["22:30", "23:00", "23:30", "00:00"]
+    assert len(ends) == 20
+    assert (ends[-1] - start).total_seconds() == 10 * 60 * 60
 
 
 def test_nonexistent_and_ambiguous_daylight_saving_times_are_not_selectable():

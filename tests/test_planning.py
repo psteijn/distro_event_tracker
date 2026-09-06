@@ -10,6 +10,7 @@ from distro_event_tracker.events.planning import (
     format_periods,
     overlapping_users,
     schedule_indices,
+    schedule_slot_indices,
     validate_party_size,
     whole_event_users,
 )
@@ -48,6 +49,25 @@ def test_removing_last_reaction_withdraws_member():
     assert plan.availability == {}
 
 
+def test_default_plan_is_newest_open_plan_led_by_caller_and_ids_ignore_case():
+    service = PlanningService()
+    older = make_plan()
+    older.id = "OlderPlan123"
+    newer = make_plan()
+    newer.id, newer.message_id = "NewerPlan456", 2
+    other = make_plan()
+    other.message_id, other.leader_id = 3, 4
+    service.add(older)
+    service.add(newer)
+    service.add(other)
+
+    assert service.find_open(leader_id=3) is newer
+    assert service.find_open(plan_id=" newerplan456 ") is newer
+    newer.cancelled = True
+    assert service.find_open(leader_id=3) is older
+    assert service.find_open(plan_id="newerplan456") is newer
+
+
 def test_blocks_require_half_hour_ordered_range():
     plan = make_plan()
     assert len(build_blocks(plan.starts_at, plan.ends_at)) == 4
@@ -77,6 +97,16 @@ def test_schedule_uses_an_exclusive_end_index_including_final_block():
     plan.availability = {10: {3}, 11: {2}}
     assert overlapping_users(plan, start, end) == {10: {3}}
     assert whole_event_users(plan, start, end) == {10}
+
+
+def test_schedule_slots_are_one_based_and_inclusive():
+    plan = make_plan()
+    assert schedule_slot_indices(plan, 3, 3) == (2, 3)
+    assert schedule_slot_indices(plan, 1, 4) == (0, 4)
+    with pytest.raises(ValueError):
+        schedule_slot_indices(plan, 4, 3)
+    with pytest.raises(ValueError):
+        schedule_slot_indices(plan, 0, 1)
 
 
 def test_availability_periods_merge_adjacent_blocks_but_preserve_gaps():
