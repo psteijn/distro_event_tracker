@@ -19,6 +19,7 @@ ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADMIN_IDS', '').split(',') if 
 # Bot Settings
 BOT_PREFIX = '!'
 EVENT_CHANNEL_ID = os.getenv('EVENT_CHANNEL_ID')
+PLANNING_CHANNEL_ID = os.getenv('PLANNING_CHANNEL_ID')
 EVENT_COMMAND_NAME_PATTERN = re.compile(r"[a-z0-9_-]{1,32}")
 
 
@@ -53,6 +54,7 @@ class Settings:
     discord_token: str | None
     bot_prefix: str
     event_channel_id: str | None
+    planning_channel_id: str | None
     event_command_name: str
     dibs_channel_id: str | None
     items_csv: Path
@@ -66,6 +68,7 @@ def load_settings() -> Settings:
         discord_token=DISCORD_TOKEN,
         bot_prefix=BOT_PREFIX,
         event_channel_id=EVENT_CHANNEL_ID,
+        planning_channel_id=PLANNING_CHANNEL_ID,
         event_command_name=EVENT_COMMAND_NAME,
         dibs_channel_id=DIBS_CHANNEL_ID,
         items_csv=Path(ITEMS_CSV),

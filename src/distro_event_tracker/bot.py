@@ -26,6 +26,7 @@ from .config import (
     EVENT_CHANNEL_ID,
     EVENT_COMMAND_NAME,
     ITEMS_CSV,
+    PLANNING_CHANNEL_ID,
     REMINDER_OPT_OUT_FILE,
 )
 from .dibs.persistence import (
@@ -98,6 +99,7 @@ class EventBot(commands.Bot):
             DIBS_CHANNEL_ID,
             EVENT_COMMAND_NAME,
             EVENT_CHANNEL_ID,
+            PLANNING_CHANNEL_ID,
         )
 
         # Sync the tree globally to make slash commands appear everywhere

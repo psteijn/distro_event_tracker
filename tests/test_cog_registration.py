@@ -9,9 +9,9 @@ async def test_install_cogs_registers_feature_commands(monkeypatch):
     monkeypatch.setattr(runtime, "DIBS_CHANNEL_ID", "123")
     test_bot = runtime.EventBot(command_prefix="!", intents=runtime.intents)
 
-    await install_cogs(test_bot, runtime, runtime.DIBS_CHANNEL_ID, "event", "456")
+    await install_cogs(test_bot, runtime, runtime.DIBS_CHANNEL_ID, "event", "456", "789")
 
-    assert set(test_bot.cogs) == {"Events", "Dibs"}
+    assert set(test_bot.cogs) == {"Events", "Dibs", "Planning"}
     assert test_bot.get_command("summary").cog_name == "Events"
     assert test_bot.get_command("dibs_data").cog_name == "Dibs"
     assert {command.name for command in test_bot.commands} == {
@@ -39,6 +39,7 @@ async def test_install_cogs_registers_feature_commands(monkeypatch):
         "custom_dibs",
         "dibs",
         "event",
+        "plan",
         "undibs",
     }
     await test_bot.close()

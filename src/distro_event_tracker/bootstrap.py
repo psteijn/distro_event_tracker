@@ -11,10 +11,12 @@ async def install_cogs(
     dibs_channel_id: str | None,
     event_command_name: str = "event",
     event_channel_id: str | None = None,
+    planning_channel_id: str | None = None,
 ) -> None:
     """Replace compatibility registrations with feature-owned Cogs."""
     from .dibs.cog import DibsCog
     from .events.cog import EventCog
+    from .events.planning_cog import PlanningCog
 
     for command in list(target_bot.commands):
         if command.name != "help":
@@ -29,6 +31,8 @@ async def install_cogs(
 
     await target_bot.add_cog(EventCog(runtime, event_command_name, event_channel_id))
     await target_bot.add_cog(DibsCog(runtime))
+    if planning_channel_id:
+        await target_bot.add_cog(PlanningCog(target_bot, planning_channel_id))
 
     if not dibs_channel_id:
         for command_name in ("dibs", "custom_dibs", "undibs"):
