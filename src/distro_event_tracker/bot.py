@@ -82,11 +82,63 @@ class EventBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.discord_connected = False
+        self.command_tree_synced = False
         self.health_server = HealthServer(
             self,
             port=int(os.getenv('HEALTH_PORT', '8080')),
-            readiness_check=lambda: self.discord_connected and not self.is_closed(),
+            readiness_check=lambda: (
+                self.discord_connected and self.command_tree_synced and not self.is_closed()
+            ),
         )
+
+    async def sync_application_commands(self) -> bool:
+        """Synchronize the global tree with bounded retry diagnostics."""
+        planned_commands = sorted(command.name for command in self.tree.get_commands())
+        logger.info(
+            "APPLICATION_COMMAND_SYNC planned_commands=%s event_channel_id=%s "
+            "planning_channel_id=%s dibs_channel_id=%s",
+            planned_commands,
+            EVENT_CHANNEL_ID,
+            PLANNING_CHANNEL_ID,
+            DIBS_CHANNEL_ID,
+        )
+        self.command_tree_synced = False
+        retryable_statuses = {429, 500, 502, 503, 504}
+        for attempt in range(1, 4):
+            try:
+                synced = await self.tree.sync()
+            except discord.HTTPException as exc:
+                retryable = exc.status in retryable_statuses
+                logger.exception(
+                    "APPLICATION_COMMAND_SYNC failed attempt=%s/3 status=%s retryable=%s "
+                    "planned_commands=%s",
+                    attempt,
+                    exc.status,
+                    retryable,
+                    planned_commands,
+                )
+                if retryable and attempt < 3:
+                    await asyncio.sleep(attempt)
+                    continue
+                return False
+            except Exception:
+                logger.exception(
+                    "APPLICATION_COMMAND_SYNC failed attempt=%s/3 planned_commands=%s",
+                    attempt,
+                    planned_commands,
+                )
+                return False
+            synced_commands = sorted(command.name for command in synced)
+            self.command_tree_synced = True
+            logger.info(
+                "APPLICATION_COMMAND_SYNC succeeded attempt=%s planned_commands=%s "
+                "synced_commands=%s",
+                attempt,
+                planned_commands,
+                synced_commands,
+            )
+            return True
+        return False
 
     async def setup_hook(self):
         await self.health_server.start()
@@ -102,15 +154,8 @@ class EventBot(commands.Bot):
             PLANNING_CHANNEL_ID,
         )
 
-        # Sync the tree globally to make slash commands appear everywhere
-        try:
-            # Syncing with guild=None (default) makes commands global
-            synced = await self.tree.sync()
-            logger.info(f"✅ Successfully synchronized {len(synced)} global slash commands.")
-            for command in synced:
-                logger.info(f"   - /{command.name}")
-        except Exception as e:
-            logger.error(f"❌ Failed to synchronize slash commands: {e}")
+        # Syncing with guild=None (default) makes commands global.
+        await self.sync_application_commands()
 
     async def close(self):
         await self.health_server.close()

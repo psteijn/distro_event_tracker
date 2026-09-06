@@ -66,3 +66,15 @@ async def test_health_endpoint_can_use_explicit_gateway_readiness():
         assert (await request(server, "/health/ready"))[0] == 200
     finally:
         await server.close()
+
+
+def test_event_bot_readiness_requires_gateway_and_command_sync():
+    from distro_event_tracker import bot as runtime
+
+    bot = runtime.EventBot(command_prefix="!", intents=runtime.intents)
+
+    assert not bot.health_server.readiness_check()
+    bot.discord_connected = True
+    assert not bot.health_server.readiness_check()
+    bot.command_tree_synced = True
+    assert bot.health_server.readiness_check()
