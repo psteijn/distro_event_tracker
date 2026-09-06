@@ -19,7 +19,18 @@ ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADMIN_IDS', '').split(',') if 
 # Bot Settings
 BOT_PREFIX = '!'
 EVENT_CHANNEL_ID = os.getenv('EVENT_CHANNEL_ID')
-PLANNING_CHANNEL_ID = os.getenv('PLANNING_CHANNEL_ID')
+
+
+def resolve_planning_channel_id(value: str | None, event_channel_id: str | None) -> str | None:
+    """Resolve the documented event-channel reference in literal service env files."""
+    return event_channel_id if value == "${EVENT_CHANNEL_ID}" else value
+
+
+# Quadlet EnvironmentFile values are literal strings, unlike python-dotenv's
+# interpolated file values. Accept the documented reference in both contexts.
+PLANNING_CHANNEL_ID = resolve_planning_channel_id(
+    os.getenv('PLANNING_CHANNEL_ID'), EVENT_CHANNEL_ID
+)
 EVENT_COMMAND_NAME_PATTERN = re.compile(r"[a-z0-9_-]{1,32}")
 
 
