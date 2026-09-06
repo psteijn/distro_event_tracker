@@ -25,10 +25,13 @@ from .planning import (
 )
 from .planning_display import (
     LOCAL_TIME_NOTE,
+    ZERO_WIDTH_SPACE,
+    availability_legend,
+    availability_rows,
+    compact_time_range,
     field_pages,
     scheduled_availability_message,
     time_range,
-    timestamp,
 )
 from .planning_draft import PlanningDraft
 from .planning_persistence import parse_planning_card, parse_planning_footer
@@ -67,10 +70,13 @@ class PlanningCog(commands.Cog, name="Planning"):
         return build_blocks(plan.starts_at, plan.ends_at)
 
     @staticmethod
-    def _timestamp(value: datetime) -> str:
-        return timestamp(value)
+    def _body_emoji_labels(guild, count: int) -> list[str]:
+        if guild is None:
+            return []
+        emojis = {emoji.name: emoji for emoji in guild.emojis}
+        return [str(emojis.get(f"ice_{index}", index)) for index in range(1, count + 1)]
 
-    def _embed(self, plan: EventPlan) -> discord.Embed:
+    def _embed(self, plan: EventPlan, *, slot_labels: list[str] | None = None) -> discord.Embed:
         blocks = self._blocks(plan)
         title_state = (
             "CANCELLED" if plan.cancelled else "SCHEDULED" if not plan.is_open else "PLANNING"
@@ -93,38 +99,32 @@ class PlanningCog(commands.Cog, name="Planning"):
             embed.add_field(name="Party size", value=party_size, inline=False)
         embed.add_field(
             name="Availability window",
-            value=f"{self._timestamp(plan.starts_at)} – {self._timestamp(plan.ends_at)}",
+            value=compact_time_range(plan.starts_at, plan.ends_at),
             inline=False,
         )
         if plan.scheduled_start is not None and plan.scheduled_end is not None:
             embed.add_field(
                 name="Scheduled time",
-                value=f"{self._timestamp(plan.scheduled_start)} – {self._timestamp(plan.scheduled_end)}",
+                value=compact_time_range(plan.scheduled_start, plan.scheduled_end),
                 inline=False,
             )
         counts = block_counts(plan, len(blocks))
-        rows = []
-        for index, (block, count) in enumerate(zip(blocks, counts)):
-            status = ""
-            if plan.minimum_people is not None:
-                status = (
-                    " · minimum met"
-                    if count >= plan.minimum_people
-                    else f" · needs {plan.minimum_people - count} more"
-                )
-            if plan.maximum_people is not None and count > plan.maximum_people:
-                status += f" · {count - plan.maximum_people} above preferred maximum"
-            rows.append(
-                f":{index + 1}: **{index + 1}** · {time_range(block.start, block.end)} — **{count} available**{status}"
-            )
-        for page, value in enumerate(field_pages(rows)):
+        rows = availability_rows(
+            blocks,
+            counts,
+            minimum=plan.minimum_people,
+            maximum=plan.maximum_people,
+            slot_labels=slot_labels,
+        )
+        legend = availability_legend(plan.minimum_people, plan.maximum_people)
+        for page, value in enumerate(field_pages(rows, limit=1024 - len(legend) - 1)):
             embed.add_field(
                 name=(
-                    f"Availability · {len(plan.availability)} people responded"
+                    f"Availability · {len(plan.availability)} responses"
                     if page == 0
-                    else "Availability (continued)"
+                    else ZERO_WIDTH_SPACE
                 ),
-                value=value,
+                value=(legend + "\n" + value) if page == 0 else value,
                 inline=False,
             )
         if plan.details:
@@ -297,16 +297,19 @@ class PlanningCog(commands.Cog, name="Planning"):
                     "The bot needs View Channel, Send Messages, Embed Links, Add Reactions, and Read Message History here."
                 )
             plan = draft.to_plan(uuid.uuid4().hex[:12])
-            if len(self._blocks(plan)) > MAX_PLAN_BLOCKS or len(self._embed(plan)) > 6000:
+            emojis = self._custom_emojis(interaction.guild, len(self._blocks(plan)))
+            card = self._embed(plan, slot_labels=[str(emoji) for emoji in emojis])
+            if len(self._blocks(plan)) > MAX_PLAN_BLOCKS or len(card) > 6000:
                 raise ValueError(
                     "This poll is too large for Discord. Please shorten its name or details and start again."
                 )
             message = await channel.send(
-                embed=self._embed(plan), allowed_mentions=discord.AllowedMentions.none()
+                embed=card,
+                allowed_mentions=discord.AllowedMentions.none(),
             )
             plan.message_id = message.id
             self.service.add(plan)
-            for emoji in self._custom_emojis(interaction.guild, len(self._blocks(plan))):
+            for emoji in emojis:
                 await message.add_reaction(emoji)
         except ValueError as exc:
             await interaction.edit_original_response(content=str(exc), embed=None, view=None)
@@ -372,7 +375,14 @@ class PlanningCog(commands.Cog, name="Planning"):
                 updated_plan = replace(
                     plan, scheduled_start=scheduled_start, scheduled_end=scheduled_end
                 )
-                await message.edit(embed=self._embed(updated_plan))
+                await message.edit(
+                    embed=self._embed(
+                        updated_plan,
+                        slot_labels=self._body_emoji_labels(
+                            getattr(message, "guild", None), len(blocks)
+                        ),
+                    )
+                )
                 plan.scheduled_start, plan.scheduled_end = scheduled_start, scheduled_end
             else:
                 await interaction.response.send_message(
@@ -437,7 +447,14 @@ class PlanningCog(commands.Cog, name="Planning"):
                 )
                 return
             updated_plan = replace(plan, cancelled=True)
-            await message.edit(embed=self._embed(updated_plan))
+            await message.edit(
+                embed=self._embed(
+                    updated_plan,
+                    slot_labels=self._body_emoji_labels(
+                        getattr(message, "guild", None), len(self._blocks(updated_plan))
+                    ),
+                )
+            )
             plan.cancelled = True
         await interaction.response.send_message(
             f"Planning poll **{plan.name}** (`{plan.id}`) cancelled.", ephemeral=True
@@ -460,7 +477,14 @@ class PlanningCog(commands.Cog, name="Planning"):
         if not self.service.update_reaction(reaction.message.id, user.id, index, added):
             return
         plan = self.service.plans[reaction.message.id]
-        await reaction.message.edit(embed=self._embed(plan))
+        await reaction.message.edit(
+            embed=self._embed(
+                plan,
+                slot_labels=self._body_emoji_labels(
+                    getattr(reaction.message, "guild", None), len(self._blocks(plan))
+                ),
+            )
+        )
 
     @staticmethod
     def _reaction_index(emoji) -> int | None:

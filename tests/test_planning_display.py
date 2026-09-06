@@ -1,5 +1,8 @@
 from distro_event_tracker.events.planning import build_blocks, parse_local_datetime
 from distro_event_tracker.events.planning_display import (
+    availability_legend,
+    availability_rows,
+    compact_time_range,
     field_pages,
     local_availability,
     scheduled_availability_message,
@@ -14,6 +17,48 @@ def test_time_ranges_always_include_localized_dates_for_both_endpoints():
 
     assert rendered.count("<t:") == 2
     assert ":f>" in rendered
+
+
+def test_compact_time_range_uses_short_localized_dates_and_times():
+    plan = make_plan()
+
+    assert compact_time_range(plan.starts_at, plan.ends_at) == (
+        "<t:1789236000:s> – <t:1789243200:s>"
+    )
+
+
+def test_availability_rows_are_compact_and_mark_minimum_and_maximum_status():
+    plan = make_plan()
+    blocks = build_blocks(plan.starts_at, plan.ends_at)
+
+    rows = availability_rows(
+        blocks,
+        [0, 3, 5, 1],
+        minimum=3,
+        maximum=4,
+        slot_labels=["<:ice_1:1>", "<:ice_2:2>", "<a:ice_3:3>", "<:ice_4:4>"],
+    )
+
+    assert rows == [
+        "<:ice_1:1> <t:1789236000:s> · 0 available",
+        "<:ice_2:2> <t:1789237800:s> · 3 available ✓",
+        "<a:ice_3:3> <t:1789239600:s> · 5 available ⚠",
+        "<:ice_4:4> <t:1789241400:s> · 1 available",
+    ]
+    assert availability_legend(3, 4) == (
+        "30-minute slots · local time · ✓ minimum met · ⚠ above preferred maximum"
+    )
+
+
+def test_availability_rows_fall_back_to_slot_numbers_without_custom_emojis():
+    plan = make_plan()
+
+    assert (
+        availability_rows(
+            build_blocks(plan.starts_at, plan.ends_at), [0, 0, 0, 0], minimum=None, maximum=None
+        )[0]
+        == "1 <t:1789236000:s> · 0 available"
+    )
 
 
 def test_personal_availability_merges_gaps_with_localized_endpoint_timestamps():

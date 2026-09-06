@@ -1,3 +1,4 @@
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -8,6 +9,15 @@ from distro_event_tracker.events.planning import build_blocks
 from distro_event_tracker.events.planning_cog import PlanningCog
 from distro_event_tracker.events.planning_service import PlanningService
 from test_planning import make_plan
+
+
+class RenderedEmoji:
+    def __init__(self, name: str, rendered: str) -> None:
+        self.name = name
+        self.rendered = rendered
+
+    def __str__(self) -> str:
+        return self.rendered
 
 
 def test_public_planning_card_uses_localized_timestamps_for_every_time_range():
@@ -24,7 +34,61 @@ def test_public_planning_card_uses_localized_timestamps_for_every_time_range():
         )
         == 2
     )
-    assert sum(value.count("<t:") for value in values) == 8
+    assert sum(value.count("<t:") for value in values) == 4
+    assert all(":s>" in value for value in values)
+
+
+def test_public_planning_card_uses_ice_emojis_for_every_availability_slot():
+    plan = make_plan()
+    plan.ends_at = plan.starts_at + timedelta(hours=10)
+
+    embed = PlanningCog(SimpleNamespace(), "2")._embed(plan)
+    availability = "\n".join(
+        field.value for field in embed.fields if field.name.startswith("Availability")
+    )
+
+    assert "1 <t:" in availability
+    assert "20 <t:" in availability
+    assert "Availability (continued)" not in [field.name for field in embed.fields]
+
+
+def test_public_planning_card_uses_resolved_custom_emoji_markup():
+    plan = make_plan()
+    guild = SimpleNamespace(
+        emojis=[
+            RenderedEmoji("ice_1", "<:ice_1:123>"),
+            RenderedEmoji("ice_2", "<a:ice_2:456>"),
+        ]
+    )
+
+    labels = PlanningCog._body_emoji_labels(guild, 4)
+    embed = PlanningCog(SimpleNamespace(), "2")._embed(plan, slot_labels=labels)
+    availability = next(
+        field.value for field in embed.fields if field.name.startswith("Availability ·")
+    )
+
+    assert labels == ["<:ice_1:123>", "<a:ice_2:456>", "3", "4"]
+    assert "<:ice_1:123> <t:" in availability
+    assert "<a:ice_2:456> <t:" in availability
+    assert "3 <t:" in availability
+
+
+def test_long_availability_cards_use_an_invisible_continuation_heading():
+    plan = make_plan()
+    plan.ends_at = plan.starts_at + timedelta(hours=10)
+    labels = [f"<:ice_{index}:123456789012345678>" for index in range(1, 21)]
+
+    embed = PlanningCog(SimpleNamespace(), "2")._embed(plan, slot_labels=labels)
+    availability_fields = [
+        field
+        for field in embed.fields
+        if field.name.startswith("Availability ·") or field.name == "\u200b"
+    ]
+
+    assert len(availability_fields) == 2
+    assert availability_fields[1].name == "\u200b"
+    assert all(len(field.value) <= 1024 for field in availability_fields)
+    assert "Availability (continued)" not in [field.name for field in embed.fields]
 
 
 def test_scheduled_notification_card_is_self_contained_and_personalized():
