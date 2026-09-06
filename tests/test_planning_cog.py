@@ -60,6 +60,52 @@ def test_scheduled_notification_card_is_self_contained_and_personalized():
 
 
 @pytest.mark.asyncio
+async def test_post_draft_uses_interaction_permissions_when_creator_is_not_cached(monkeypatch):
+    permissions = SimpleNamespace(
+        view_channel=True,
+        use_application_commands=True,
+        send_messages=True,
+        embed_links=True,
+        add_reactions=True,
+        read_message_history=True,
+    )
+    posted_message = SimpleNamespace(id=4, jump_url="https://discord.com/channels/1/2/4")
+    posted_message.add_reaction = AsyncMock()
+    channel = SimpleNamespace(
+        permissions_for=MagicMock(return_value=permissions),
+        send=AsyncMock(return_value=posted_message),
+    )
+    guild = SimpleNamespace(
+        me=SimpleNamespace(id=99),
+        get_member=MagicMock(return_value=None),
+        emojis=[],
+    )
+    interaction = SimpleNamespace(
+        channel_id=2,
+        channel=channel,
+        guild=guild,
+        permissions=permissions,
+        edit_original_response=AsyncMock(),
+    )
+    draft = SimpleNamespace(
+        leader_id=1,
+        channel_id=2,
+        validate_details=MagicMock(),
+        validate_times=MagicMock(),
+        to_plan=MagicMock(return_value=make_plan()),
+    )
+    cog = PlanningCog(SimpleNamespace(user=SimpleNamespace(id=99)), "2")
+    monkeypatch.setattr(cog, "_custom_emojis", lambda guild, count: [])
+
+    await cog.post_draft(interaction, draft)
+
+    channel.send.assert_awaited_once()
+    interaction.edit_original_response.assert_awaited_once_with(
+        content="Poll posted: https://discord.com/channels/1/2/4", embed=None, view=None
+    )
+
+
+@pytest.mark.asyncio
 async def test_schedule_sends_personalized_cards_and_continues_after_a_failed_dm():
     plan = make_plan()
     plan.availability = {10: {0, 1}, 11: {1}, 12: {3}}

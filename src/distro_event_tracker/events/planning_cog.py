@@ -272,8 +272,6 @@ class PlanningCog(commands.Cog, name="Planning"):
             channel = interaction.channel
             if interaction.guild is None or channel is None:
                 raise ValueError("Please use a server planning channel.")
-            member = interaction.guild.get_member(draft.leader_id)
-            permissions = channel.permissions_for(member) if member else None
             bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
             if bot_member is None:
                 raise ValueError(
@@ -281,9 +279,8 @@ class PlanningCog(commands.Cog, name="Planning"):
                 )
             bot_permissions = channel.permissions_for(bot_member)
             if (
-                not permissions
-                or not permissions.view_channel
-                or not permissions.use_application_commands
+                not interaction.permissions.view_channel
+                or not interaction.permissions.use_application_commands
             ):
                 raise ValueError("You no longer have access to use planning in this channel.")
             if not all(
