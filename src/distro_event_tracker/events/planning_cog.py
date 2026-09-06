@@ -26,7 +26,7 @@ from .planning import (
 from .planning_display import (
     LOCAL_TIME_NOTE,
     field_pages,
-    local_availability,
+    scheduled_availability_message,
     time_range,
     timestamp,
 )
@@ -144,6 +144,39 @@ class PlanningCog(commands.Cog, name="Planning"):
             overlap = len(overlapping_users(plan, start_index, end_index))
             embed.description = f"Planning is closed. **{whole} available throughout · {overlap} available for some portion.**"
         embed.description = f"{LOCAL_TIME_NOTE}\n\n{embed.description}"
+        return embed
+
+    def _scheduled_notification_embed(
+        self,
+        plan: EventPlan,
+        *,
+        selected: set[int],
+        blocks,
+        start_index: int,
+        end_index: int,
+        guild_name: str,
+        jump_url: str,
+    ) -> discord.Embed:
+        """Build a recipient-specific DM for a newly scheduled event."""
+        embed = discord.Embed(
+            title=f"{plan.name} is happening!",
+            description=f"{guild_name} · Led by <@{plan.leader_id}>",
+            color=discord.Color.blurple(),
+        )
+        embed.add_field(
+            name="When",
+            value=time_range(plan.scheduled_start, plan.scheduled_end),
+            inline=False,
+        )
+        embed.add_field(
+            name="Your availability",
+            value=scheduled_availability_message(selected, blocks, start_index, end_index),
+            inline=False,
+        )
+        if plan.details:
+            embed.add_field(name="Details", value=plan.details, inline=False)
+        embed.add_field(name="Event plan", value=f"[View event plan]({jump_url})", inline=False)
+        embed.set_footer(text=LOCAL_TIME_NOTE)
         return embed
 
     @commands.Cog.listener()
@@ -357,9 +390,18 @@ class PlanningCog(commands.Cog, name="Planning"):
                 try:
                     user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
                     await user.send(
-                        f"**{plan.name}** is scheduled for {self._timestamp(scheduled_start)}–{self._timestamp(scheduled_end)}. "
-                        f"{LOCAL_TIME_NOTE}\nYour indicated availability: {local_availability(selected, blocks)}. "
-                        f"[Open event]({message.jump_url if message else ''})"
+                        embed=self._scheduled_notification_embed(
+                            plan,
+                            selected=selected,
+                            blocks=blocks,
+                            start_index=start_index,
+                            end_index=end_index,
+                            guild_name=(
+                                interaction.guild.name if interaction.guild else "This server"
+                            ),
+                            jump_url=message.jump_url,
+                        ),
+                        allowed_mentions=discord.AllowedMentions.none(),
                     )
                 except (discord.Forbidden, discord.NotFound, discord.HTTPException):
                     continue

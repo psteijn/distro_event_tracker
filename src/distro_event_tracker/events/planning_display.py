@@ -19,6 +19,18 @@ def local_availability(indices: set[int], blocks: list[PlanBlock]) -> str:
     return ", ".join(time_range(start, end) for start, end in availability_periods(indices, blocks))
 
 
+def scheduled_availability_message(
+    selected: set[int], blocks: list[PlanBlock], start_index: int, end_index: int
+) -> str:
+    """Explain whether a member selected all or part of the scheduled event."""
+    scheduled = set(range(start_index, end_index))
+    if selected == scheduled:
+        return "You marked yourself available for the whole event."
+    return "You marked yourself available for part of the event:\n" + "\n".join(
+        time_range(start, end) for start, end in availability_periods(selected, blocks)
+    )
+
+
 def field_pages(rows: list[str], limit: int = 1024) -> list[str]:
     pages: list[str] = []
     page = ""

@@ -1,5 +1,10 @@
 from distro_event_tracker.events.planning import build_blocks, parse_local_datetime
-from distro_event_tracker.events.planning_display import field_pages, local_availability, time_range
+from distro_event_tracker.events.planning_display import (
+    field_pages,
+    local_availability,
+    scheduled_availability_message,
+    time_range,
+)
 from test_planning import make_plan
 
 
@@ -31,3 +36,16 @@ def test_equivalent_organizer_times_produce_identical_discord_timestamps():
 
     assert pacific == eastern
     assert time_range(pacific, pacific) == time_range(eastern, eastern)
+
+
+def test_scheduled_availability_distinguishes_full_partial_and_disjoint_times():
+    plan = make_plan()
+    blocks = build_blocks(plan.starts_at, plan.ends_at)
+
+    assert scheduled_availability_message({1, 2}, blocks, 1, 3) == (
+        "You marked yourself available for the whole event."
+    )
+    partial = scheduled_availability_message({1, 3}, blocks, 1, 4)
+    assert partial.startswith("You marked yourself available for part of the event:\n")
+    assert partial.count("<t:") == 4
+    assert "<t:1789237800:f>" in partial
