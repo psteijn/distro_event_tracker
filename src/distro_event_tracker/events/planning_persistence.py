@@ -26,6 +26,7 @@ def format_planning_footer(plan: EventPlan) -> str:
         "ss": plan.scheduled_start.isoformat() if plan.scheduled_start else None,
         "se": plan.scheduled_end.isoformat() if plan.scheduled_end else None,
         "c": plan.cancelled,
+        "tz": plan.input_timezone,
     }
     encoded = base64.urlsafe_b64encode(
         json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -58,6 +59,7 @@ def parse_planning_footer(
             scheduled_start=datetime.fromisoformat(payload["ss"]) if payload["ss"] else None,
             scheduled_end=datetime.fromisoformat(payload["se"]) if payload["se"] else None,
             cancelled=payload["c"],
+            input_timezone=payload.get("tz", "America/Los_Angeles"),
         )
     except (binascii.Error, KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None

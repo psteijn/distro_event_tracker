@@ -42,6 +42,17 @@ async def test_install_cogs_registers_feature_commands(monkeypatch):
         "plan",
         "undibs",
     }
+    plan = test_bot.tree.get_command("plan")
+    assert plan is not None
+    create = plan.get_command("create")
+    assert create is not None
+    assert [parameter.name for parameter in create.parameters] == [
+        "name",
+        "event_type",
+        "minimum_people",
+        "maximum_people",
+        "details",
+    ]
     await test_bot.close()
 
 

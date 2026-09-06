@@ -124,6 +124,17 @@ You can also create any event with the configured event slash command, such as
 both options before the command can be submitted, and each command only works in its
 bot instance's configured event channel.
 
+### Event planning
+
+Set `PLANNING_CHANNEL_ID` to enable `/plan` in one channel. `/plan create` asks the
+organizer privately to choose a timezone, one of today through the next fourteen days,
+and a half-hour availability window. Members react to each block they can attend; the
+card shows every time in each viewer's Discord-local timezone. The leader uses
+`/plan schedule` to choose the final block range and notify members who reacted to an
+overlapping block. Until its picker is redesigned, `/plan schedule` interprets its
+typed start and end values in the timezone stored with the plan (Pacific for older
+planning cards).
+
 ### The Unified `!summary` Command
 The new summary command is context-aware and accepts multiple formats:
 

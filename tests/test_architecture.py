@@ -6,6 +6,9 @@ import pytest
 PURE_MODULES = [
     "src/distro_event_tracker/events/models.py",
     "src/distro_event_tracker/events/scoring.py",
+    "src/distro_event_tracker/events/planning.py",
+    "src/distro_event_tracker/events/planning_display.py",
+    "src/distro_event_tracker/events/planning_draft.py",
     "src/distro_event_tracker/dibs/models.py",
     "src/distro_event_tracker/dibs/persistence.py",
     "src/distro_event_tracker/dibs/summary.py",

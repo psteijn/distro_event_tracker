@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
 import pytz
@@ -27,7 +27,7 @@ class PlanBlock:
 
     @property
     def end(self) -> datetime:
-        return self.start + timedelta(minutes=BLOCK_MINUTES)
+        return self.start.astimezone(timezone.utc) + timedelta(minutes=BLOCK_MINUTES)
 
 
 @dataclass(slots=True)
@@ -47,6 +47,7 @@ class EventPlan:
     scheduled_end: datetime | None = None
     cancelled: bool = False
     availability: dict[int, set[int]] = field(default_factory=dict)
+    input_timezone: str = "America/Los_Angeles"
 
     @property
     def is_open(self) -> bool:
@@ -60,8 +61,8 @@ def build_blocks(starts_at: datetime, ends_at: datetime) -> list[PlanBlock]:
     if starts_at >= ends_at or starts_at.minute not in (0, 30) or ends_at.minute not in (0, 30):
         raise ValueError("Times must be ordered and fall on :00 or :30.")
     blocks: list[PlanBlock] = []
-    current = starts_at
-    while current < ends_at:
+    current = starts_at.astimezone(timezone.utc)
+    while current < ends_at.astimezone(timezone.utc):
         blocks.append(PlanBlock(current))
         current += timedelta(minutes=BLOCK_MINUTES)
     return blocks
@@ -75,7 +76,39 @@ def parse_local_datetime(value: str, timezone: str = "America/Los_Angeles") -> d
         raise ValueError("Use YYYY-MM-DD HH:MM, for example 2026-09-12 18:30.") from exc
     if parsed.minute not in (0, 30):
         raise ValueError("Times must fall on :00 or :30.")
-    return pytz.timezone(timezone).localize(parsed)
+    try:
+        return pytz.timezone(timezone).localize(parsed, is_dst=None)
+    except (pytz.AmbiguousTimeError, pytz.NonExistentTimeError) as exc:
+        raise ValueError(
+            "That time is skipped or repeated by daylight saving. Choose another time."
+        ) from exc
+
+
+def schedule_indices(plan: EventPlan, start: datetime, end: datetime) -> tuple[int, int]:
+    """Map boundaries to an inclusive start and exclusive ending block index."""
+    blocks = build_blocks(plan.starts_at, plan.ends_at)
+    try:
+        first = next(i for i, block in enumerate(blocks) if block.start == start)
+        last = next(i + 1 for i, block in enumerate(blocks) if block.end == end)
+    except StopIteration as exc:
+        raise ValueError("Choose boundaries within the original availability window.") from exc
+    if last <= first:
+        raise ValueError("The end must be after the start.")
+    return first, last
+
+
+def availability_periods(
+    indices: Iterable[int], blocks: list[PlanBlock]
+) -> list[tuple[datetime, datetime]]:
+    """Return contiguous intervals without filling gaps between selected blocks."""
+    periods: list[tuple[datetime, datetime]] = []
+    for index in sorted(set(indices)):
+        block = blocks[index]
+        if periods and periods[-1][1] == block.start:
+            periods[-1] = (periods[-1][0], block.end)
+        else:
+            periods.append((block.start, block.end))
+    return periods
 
 
 def block_counts(plan: EventPlan, block_count: int) -> list[int]:

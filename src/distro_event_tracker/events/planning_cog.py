@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import discord
@@ -15,14 +17,24 @@ from .planning import (
     EventPlan,
     block_counts,
     build_blocks,
-    format_periods,
     overlapping_users,
     parse_local_datetime,
-    validate_party_size,
+    schedule_indices,
     whole_event_users,
 )
+from .planning_display import (
+    LOCAL_TIME_NOTE,
+    field_pages,
+    local_availability,
+    time_range,
+    timestamp,
+)
+from .planning_draft import PlanningDraft
 from .planning_persistence import format_planning_footer, parse_planning_footer
 from .planning_service import PlanningService
+from .planning_wizard import PlanningWizard
+
+logger = logging.getLogger(__name__)
 
 
 class PlanningCog(commands.Cog, name="Planning"):
@@ -55,7 +67,7 @@ class PlanningCog(commands.Cog, name="Planning"):
 
     @staticmethod
     def _timestamp(value: datetime) -> str:
-        return f"<t:{int(value.timestamp())}:f>"
+        return timestamp(value)
 
     def _embed(self, plan: EventPlan) -> discord.Embed:
         blocks = self._blocks(plan)
@@ -101,13 +113,18 @@ class PlanningCog(commands.Cog, name="Planning"):
             if plan.maximum_people is not None and count > plan.maximum_people:
                 status += f" · {count - plan.maximum_people} above preferred maximum"
             rows.append(
-                f"{NUMBER_EMOJIS[index]} {self._timestamp(block.start)}–<t:{int(block.end.timestamp())}:t> — **{count} available**{status}"
+                f"{NUMBER_EMOJIS[index]} {time_range(block.start, block.end)} — **{count} available**{status}"
             )
-        embed.add_field(
-            name=f"Availability · {len(plan.availability)} people responded",
-            value="\n".join(rows),
-            inline=False,
-        )
+        for page, value in enumerate(field_pages(rows)):
+            embed.add_field(
+                name=(
+                    f"Availability · {len(plan.availability)} people responded"
+                    if page == 0
+                    else "Availability (continued)"
+                ),
+                value=value,
+                inline=False,
+            )
         if plan.details:
             embed.add_field(name="Details", value=plan.details, inline=False)
         if plan.is_open:
@@ -118,13 +135,13 @@ class PlanningCog(commands.Cog, name="Planning"):
         elif plan.cancelled:
             embed.description = "Planning is closed."
         else:
-            start_index = next(
-                i for i, block in enumerate(blocks) if block.start == plan.scheduled_start
+            start_index, end_index = schedule_indices(
+                plan, plan.scheduled_start, plan.scheduled_end
             )
-            end_index = next(i for i, block in enumerate(blocks) if block.end == plan.scheduled_end)
             whole = len(whole_event_users(plan, start_index, end_index))
             overlap = len(overlapping_users(plan, start_index, end_index))
             embed.description = f"Planning is closed. **{whole} available throughout · {overlap} available for some portion.**"
+        embed.description = f"{LOCAL_TIME_NOTE}\n\n{embed.description}"
         embed.set_footer(text=format_planning_footer(plan))
         return embed
 
@@ -160,8 +177,6 @@ class PlanningCog(commands.Cog, name="Planning"):
     @plan.command(name="create", description="Post a reaction-based availability poll")
     @app_commands.describe(
         name="Event name",
-        starts="YYYY-MM-DD HH:MM, Pacific time",
-        ends="YYYY-MM-DD HH:MM, Pacific time",
         event_type="Optional event category",
         minimum_people="Optional minimum viable group size",
         maximum_people="Optional preferred group size",
@@ -171,8 +186,6 @@ class PlanningCog(commands.Cog, name="Planning"):
         self,
         interaction: discord.Interaction,
         name: str,
-        starts: str,
-        ends: str,
         event_type: str | None = None,
         minimum_people: int | None = None,
         maximum_people: int | None = None,
@@ -181,40 +194,100 @@ class PlanningCog(commands.Cog, name="Planning"):
         if not await self._require_planning_channel(interaction):
             return
         try:
-            starts_at = parse_local_datetime(starts)
-            ends_at = parse_local_datetime(ends)
-            blocks = build_blocks(starts_at, ends_at)
-            validate_party_size(minimum_people, maximum_people)
-            if len(blocks) > len(NUMBER_EMOJIS):
-                raise ValueError("Planning windows currently support up to 4 hours (eight blocks).")
-            if starts_at <= datetime.now(timezone.utc).astimezone(starts_at.tzinfo):
-                raise ValueError("The first availability block must be in the future.")
+            draft = PlanningDraft(
+                leader_id=interaction.user.id,
+                channel_id=interaction.channel_id,
+                name=name.strip(),
+                event_type=event_type.strip() if event_type else None,
+                minimum_people=minimum_people,
+                maximum_people=maximum_people,
+                details=details.strip() if details else None,
+            )
+            draft.validate_details()
         except ValueError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
-        await interaction.response.send_message("Creating planning poll…")
-        message = await interaction.original_response()
-        plan = EventPlan(
-            id=uuid.uuid4().hex[:12],
-            message_id=message.id,
-            channel_id=interaction.channel_id,
-            leader_id=interaction.user.id,
-            name=name.strip(),
-            starts_at=starts_at,
-            ends_at=ends_at,
-            event_type=event_type.strip() if event_type else None,
-            minimum_people=minimum_people,
-            maximum_people=maximum_people,
-            details=details.strip() if details else None,
+        wizard = PlanningWizard(self, draft)
+        await interaction.response.send_message(
+            embed=discord.Embed(description=wizard.content), view=wizard, ephemeral=True
         )
-        self.service.add(plan)
-        await message.edit(content=None, embed=self._embed(plan))
-        for emoji in NUMBER_EMOJIS[: len(blocks)]:
-            await message.add_reaction(emoji)
+        wizard.message = await interaction.original_response()
+
+    async def post_draft(self, interaction: discord.Interaction, draft: PlanningDraft) -> None:
+        """Publish once after validation; report partial or uncertain writes explicitly."""
+        message = None
+        try:
+            draft.validate_details()
+            draft.validate_times(datetime.now(timezone.utc))
+            if (
+                str(interaction.channel_id) != self.planning_channel_id
+                or interaction.channel_id != draft.channel_id
+            ):
+                raise ValueError("Please start a new draft in the designated planning channel.")
+            channel = interaction.channel
+            if interaction.guild is None or channel is None:
+                raise ValueError("Please use a server planning channel.")
+            member = interaction.guild.get_member(draft.leader_id)
+            permissions = channel.permissions_for(member) if member else None
+            bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
+            if bot_member is None:
+                raise ValueError(
+                    "The bot is not available in this server. Please try again shortly."
+                )
+            bot_permissions = channel.permissions_for(bot_member)
+            if (
+                not permissions
+                or not permissions.view_channel
+                or not permissions.use_application_commands
+            ):
+                raise ValueError("You no longer have access to use planning in this channel.")
+            if not all(
+                getattr(bot_permissions, name)
+                for name in (
+                    "view_channel",
+                    "send_messages",
+                    "embed_links",
+                    "add_reactions",
+                    "read_message_history",
+                )
+            ):
+                raise ValueError(
+                    "The bot needs View Channel, Send Messages, Embed Links, Add Reactions, and Read Message History here."
+                )
+            plan = draft.to_plan(uuid.uuid4().hex[:12])
+            # Reserve space for scheduled timestamps before publishing a durable card.
+            future = replace(plan, scheduled_start=plan.starts_at, scheduled_end=plan.ends_at)
+            if len(format_planning_footer(future)) > 2048 or len(self._embed(future)) > 6000:
+                raise ValueError(
+                    "This poll is too large for Discord. Please shorten its name or details and start again."
+                )
+            message = await channel.send(
+                embed=self._embed(plan), allowed_mentions=discord.AllowedMentions.none()
+            )
+            plan.message_id = message.id
+            self.service.add(plan)
+            for emoji in NUMBER_EMOJIS[: len(self._blocks(plan))]:
+                await message.add_reaction(emoji)
+        except ValueError as exc:
+            await interaction.edit_original_response(content=str(exc), embed=None, view=None)
+            return
+        except discord.HTTPException:
+            logger.exception("Planning poll publication failed channel=%s", draft.channel_id)
+            if message is not None:
+                result = f"The poll was posted, but some reaction buttons could not be added. Check [the poll]({message.jump_url}); do not post it again."
+            else:
+                result = "Discord did not confirm publication. Check the planning channel before starting a new draft to avoid duplicates."
+            await interaction.edit_original_response(content=result, embed=None, view=None)
+            return
+        await interaction.edit_original_response(
+            content=f"Poll posted: {message.jump_url}", embed=None, view=None
+        )
 
     @plan.command(name="schedule", description="Choose the final time and notify available members")
     @app_commands.describe(
-        message_id="Planning message ID", starts="YYYY-MM-DD HH:MM", ends="YYYY-MM-DD HH:MM"
+        message_id="Planning message ID",
+        starts="YYYY-MM-DD HH:MM in the timezone chosen for this plan (older plans: Pacific)",
+        ends="YYYY-MM-DD HH:MM in the timezone chosen for this plan (older plans: Pacific)",
     )
     async def schedule(
         self, interaction: discord.Interaction, message_id: str, starts: str, ends: str
@@ -237,18 +310,13 @@ class PlanningCog(commands.Cog, name="Planning"):
             )
             return
         try:
-            scheduled_start = parse_local_datetime(starts)
-            scheduled_end = parse_local_datetime(ends)
+            scheduled_start = parse_local_datetime(starts, plan.input_timezone)
+            scheduled_end = parse_local_datetime(ends, plan.input_timezone)
             blocks = self._blocks(plan)
-            start_index = next(
-                i for i, block in enumerate(blocks) if block.start == scheduled_start
-            )
-            end_index = next(i for i, block in enumerate(blocks) if block.end == scheduled_end)
-            if start_index >= end_index:
-                raise ValueError
-        except (ValueError, StopIteration):
+            start_index, end_index = schedule_indices(plan, scheduled_start, scheduled_end)
+        except ValueError as exc:
             await interaction.response.send_message(
-                "Choose boundaries within the original availability window, on a 30-minute block boundary.",
+                f"{exc} Enter times in {plan.input_timezone}, on a 30-minute boundary.",
                 ephemeral=True,
             )
             return
@@ -273,7 +341,7 @@ class PlanningCog(commands.Cog, name="Planning"):
                     user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
                     await user.send(
                         f"**{plan.name}** is scheduled for {self._timestamp(scheduled_start)}–{self._timestamp(scheduled_end)}. "
-                        f"Your indicated availability: {format_periods(selected, blocks)}. "
+                        f"{LOCAL_TIME_NOTE}\nYour indicated availability: {local_availability(selected, blocks)}. "
                         f"[Open event]({message.jump_url if message else ''})"
                     )
                 except (discord.Forbidden, discord.NotFound, discord.HTTPException):

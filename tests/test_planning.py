@@ -4,10 +4,12 @@ import pytest
 
 from distro_event_tracker.events.planning import (
     EventPlan,
+    availability_periods,
     block_counts,
     build_blocks,
     format_periods,
     overlapping_users,
+    schedule_indices,
     validate_party_size,
     whole_event_users,
 )
@@ -64,3 +66,23 @@ def test_optional_party_sizes_are_valid_and_checked_when_present():
     validate_party_size(None, 10)
     with pytest.raises(ValueError):
         validate_party_size(10, 5)
+
+
+def test_schedule_uses_an_exclusive_end_index_including_final_block():
+    plan = make_plan()
+    blocks = build_blocks(plan.starts_at, plan.ends_at)
+    start, end = schedule_indices(plan, blocks[-1].start, blocks[-1].end)
+
+    assert (start, end) == (3, 4)
+    plan.availability = {10: {3}, 11: {2}}
+    assert overlapping_users(plan, start, end) == {10: {3}}
+    assert whole_event_users(plan, start, end) == {10}
+
+
+def test_availability_periods_merge_adjacent_blocks_but_preserve_gaps():
+    blocks = build_blocks(make_plan().starts_at, make_plan().ends_at)
+
+    assert availability_periods({0, 1, 3}, blocks) == [
+        (blocks[0].start, blocks[1].end),
+        (blocks[3].start, blocks[3].end),
+    ]
