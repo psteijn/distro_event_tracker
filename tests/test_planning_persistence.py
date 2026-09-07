@@ -29,6 +29,18 @@ def test_planning_footer_round_trips_optional_fields_and_schedule():
     assert restored.input_timezone == "America/Los_Angeles"
 
 
+def test_planning_footer_round_trips_summary_and_notification_recipients():
+    plan = make_plan()
+    plan.summary_message_id = 123
+    plan.notified_user_ids = {12, 34}
+
+    restored = parse_planning_footer(format_planning_footer(plan), message_id=99, channel_id=42)
+
+    assert restored is not None
+    assert restored.summary_message_id == 123
+    assert restored.notified_user_ids == {12, 34}
+
+
 def test_legacy_planning_footer_defaults_input_timezone_to_pacific():
     plan = make_plan()
     payload = json.loads(

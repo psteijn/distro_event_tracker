@@ -25,7 +25,7 @@ class PlanningService:
 
     def update_reaction(self, message_id: int, user_id: int, block_index: int, added: bool) -> bool:
         plan = self.plans.get(message_id)
-        if plan is None or not plan.is_open:
+        if plan is None or plan.cancelled:
             return False
         selected = plan.availability.setdefault(user_id, set())
         if added:

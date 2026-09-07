@@ -132,8 +132,12 @@ and a half-hour availability window of up to ten hours. Members react to each bl
 they can attend; the card shows every time in each viewer's Discord-local timezone and
 a copyable plan ID. The leader uses `/plan schedule start:<slot> end:<slot>` to choose
 an inclusive range of the numbered slots and notify members who reacted to an
-overlapping block. `/plan schedule` and `/plan cancel` use the leader's most recent
-open plan by default; either accepts `id:<plan ID>` to target a specific poll.
+overlapping block. Scheduling posts a separate event summary while retaining the poll
+as a record of candidate times. `/plan schedule` and `/plan cancel` use the leader's
+most recent open plan by default; either accepts `id:<plan ID>` to target a specific
+poll. Cancelling a scheduled event requires its explicit ID. `/plan modify id:<plan
+ID> start:<slot> end:<slot>` changes a scheduled event within its original availability
+window and notifies members available at either the old or new time.
 
 ### The Unified `!summary` Command
 The new summary command is context-aware and accepts multiple formats:

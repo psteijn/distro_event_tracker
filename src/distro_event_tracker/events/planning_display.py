@@ -31,7 +31,7 @@ def availability_legend(minimum: int | None, maximum: int | None) -> str:
     """Explain the compact status symbols shown beside availability slots."""
     notes = ["30-minute slots", "local time"]
     if minimum is not None:
-        notes.append("✓ minimum met")
+        notes.append("✅ minimum met")
     if maximum is not None:
         notes.append("⚠ above preferred maximum")
     return " · ".join(notes)
@@ -51,9 +51,9 @@ def availability_rows(
         label = slot_labels[index - 1] if slot_labels and index <= len(slot_labels) else str(index)
         marker = ""
         if maximum is not None and count > maximum:
-            marker = " ⚠"
+            marker = " ⚠️"
         elif minimum is not None and count >= minimum:
-            marker = " ✓"
+            marker = " ✅"
         rows.append(f"{label} {compact_timestamp(block.start)} · {count} available{marker}")
     return rows
 
@@ -67,7 +67,7 @@ def scheduled_availability_message(
 ) -> str:
     """Explain whether a member selected all or part of the scheduled event."""
     scheduled = set(range(start_index, end_index))
-    if selected == scheduled:
+    if scheduled <= selected:
         return "You marked yourself available for the whole event."
     return "You marked yourself available for part of the event:\n" + "\n".join(
         time_range(start, end) for start, end in availability_periods(selected, blocks)

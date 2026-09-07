@@ -18,6 +18,9 @@ backward-compatible contracts.
   original availability window, optional attributes, and scheduled time. Legacy
   records retain their original start/end instants; records created before the optional
   `tz` field are interpreted as Pacific.
+- Scheduled event summaries are separate bot embeds identified by an `EVENT ·` or
+  `CANCELLED ·` title and a `Plan ID` field. They are derived display records; the
+  original planning card remains the source for reconstructing a plan.
 
 Any format change requires a parser that accepts old and new formats plus golden tests
 for reconstruction from existing messages.

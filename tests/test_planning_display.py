@@ -41,12 +41,12 @@ def test_availability_rows_are_compact_and_mark_minimum_and_maximum_status():
 
     assert rows == [
         "<:ice_1:1> <t:1789236000:s> · 0 available",
-        "<:ice_2:2> <t:1789237800:s> · 3 available ✓",
-        "<a:ice_3:3> <t:1789239600:s> · 5 available ⚠",
+        "<:ice_2:2> <t:1789237800:s> · 3 available ✅",
+        "<a:ice_3:3> <t:1789239600:s> · 5 available ⚠️",
         "<:ice_4:4> <t:1789241400:s> · 1 available",
     ]
     assert availability_legend(3, 4) == (
-        "30-minute slots · local time · ✓ minimum met · ⚠ above preferred maximum"
+        "30-minute slots · local time · ✅ minimum met · ⚠ above preferred maximum"
     )
 
 

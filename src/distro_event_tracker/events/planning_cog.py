@@ -26,11 +26,9 @@ from .planning import (
 from .planning_display import (
     DM_TIME_NOTE,
     LOCAL_TIME_NOTE,
-    ZERO_WIDTH_SPACE,
     availability_legend,
     availability_rows,
     compact_time_range,
-    field_pages,
     scheduled_availability_message,
     time_range,
 )
@@ -57,6 +55,8 @@ class PlanningCog(commands.Cog, name="Planning"):
         self.planning_channel_id = planning_channel_id
         self.service = service or PlanningService()
         self._locks: dict[int, asyncio.Lock] = {}
+        self._refresh_tasks: dict[int, asyncio.Task] = {}
+        self._last_reaction_at: dict[int, float] = {}
 
     async def _require_planning_channel(self, interaction: discord.Interaction) -> bool:
         if str(interaction.channel_id) == self.planning_channel_id:
@@ -76,6 +76,19 @@ class PlanningCog(commands.Cog, name="Planning"):
             return []
         emojis = {emoji.name: emoji for emoji in guild.emojis}
         return [str(emojis.get(f"ice_{index}", index)) for index in range(1, count + 1)]
+
+    @staticmethod
+    def _member_chunks(user_ids) -> list[str]:
+        """Keep member lists within Discord's 1,024-character field limit."""
+        chunks: list[str] = []
+        chunk = ""
+        for user_id in sorted(user_ids):
+            value = f"<@{user_id}>"
+            if chunk and len(chunk) + len(value) + 1 > 1024:
+                chunks.append(chunk)
+                chunk = ""
+            chunk = f"{chunk} {value}".strip()
+        return chunks or ["None"]
 
     def _embed(self, plan: EventPlan, *, slot_labels: list[str] | None = None) -> discord.Embed:
         blocks = self._blocks(plan)
@@ -109,6 +122,13 @@ class PlanningCog(commands.Cog, name="Planning"):
                 value=compact_time_range(plan.scheduled_start, plan.scheduled_end),
                 inline=False,
             )
+        if plan.notified_user_ids:
+            for page, values in enumerate(self._member_chunks(plan.notified_user_ids), start=1):
+                embed.add_field(
+                    name="Notified members" if page == 1 else f"Notified members ({page})",
+                    value=values,
+                    inline=False,
+                )
         counts = block_counts(plan, len(blocks))
         rows = availability_rows(
             blocks,
@@ -118,33 +138,70 @@ class PlanningCog(commands.Cog, name="Planning"):
             slot_labels=slot_labels,
         )
         legend = availability_legend(plan.minimum_people, plan.maximum_people)
-        for page, value in enumerate(field_pages(rows, limit=1024 - len(legend) - 1)):
-            embed.add_field(
-                name=(
-                    f"Availability · {len(plan.availability)} responses"
-                    if page == 0
-                    else ZERO_WIDTH_SPACE
-                ),
-                value=(legend + "\n" + value) if page == 0 else value,
-                inline=False,
-            )
+        availability = "\n".join(rows)
         if plan.details:
             embed.add_field(name="Details", value=plan.details, inline=False)
         if plan.is_open:
-            embed.description = (
+            state_description = (
                 "React to every 30-minute block you can attend in full. Remove a reaction if "
                 "your availability changes. Schedule slots with `/plan schedule start:3 end:5` (both inclusive)."
             )
         elif plan.cancelled:
-            embed.description = "Planning is closed."
+            state_description = "Planning is closed."
         else:
             start_index, end_index = schedule_indices(
                 plan, plan.scheduled_start, plan.scheduled_end
             )
             whole = len(whole_event_users(plan, start_index, end_index))
             overlap = len(overlapping_users(plan, start_index, end_index))
-            embed.description = f"Planning is closed. **{whole} available throughout · {overlap} available for some portion.**"
-        embed.description = f"{LOCAL_TIME_NOTE}\n\n{embed.description}"
+            state_description = f"Planning is closed. **{whole} available throughout · {overlap} available for some portion.**"
+        embed.description = (
+            f"{LOCAL_TIME_NOTE}\n\n{state_description}\n\n"
+            f"**Availability · {len(plan.availability)} responses**\n{legend}\n{availability}"
+        )
+        return embed
+
+    def _summary_embed(self, plan: EventPlan, *, planning_url: str) -> discord.Embed:
+        """Render the committed-event message separately from the planning poll."""
+        title = f"{'CANCELLED' if plan.cancelled else 'EVENT'} · {plan.name}"
+        embed = discord.Embed(
+            title=title, color=discord.Color.red() if plan.cancelled else discord.Color.green()
+        )
+        embed.add_field(name="Plan ID", value=plan.id, inline=True)
+        embed.add_field(name="Leader", value=f"<@{plan.leader_id}>", inline=True)
+        if plan.scheduled_start and plan.scheduled_end:
+            embed.add_field(
+                name="When",
+                value=compact_time_range(plan.scheduled_start, plan.scheduled_end),
+                inline=False,
+            )
+            start, end = schedule_indices(plan, plan.scheduled_start, plan.scheduled_end)
+            whole = sorted(whole_event_users(plan, start, end))
+            partial = sorted(set(overlapping_users(plan, start, end)) - set(whole))
+            for page, value in enumerate(self._member_chunks(whole), start=1):
+                embed.add_field(
+                    name="Available throughout" if page == 1 else f"Available throughout ({page})",
+                    value=value,
+                    inline=False,
+                )
+            for page, value in enumerate(self._member_chunks(partial), start=1):
+                embed.add_field(
+                    name="Available for part" if page == 1 else f"Available for part ({page})",
+                    value=value,
+                    inline=False,
+                )
+        if plan.event_type:
+            embed.add_field(name="Type", value=plan.event_type, inline=True)
+        if plan.details:
+            embed.add_field(name="Details", value=plan.details, inline=False)
+        embed.add_field(
+            name="Planning poll", value=f"[View planning poll]({planning_url})", inline=False
+        )
+        embed.description = (
+            "This event has been cancelled."
+            if plan.cancelled
+            else "Availability updates as reactions change."
+        )
         return embed
 
     def _scheduled_notification_embed(
@@ -180,15 +237,91 @@ class PlanningCog(commands.Cog, name="Planning"):
         embed.set_footer(text=DM_TIME_NOTE)
         return embed
 
+    def _changed_notification_embed(
+        self,
+        plan: EventPlan,
+        *,
+        old_start: datetime | None,
+        old_end: datetime | None,
+        selected: set[int],
+        blocks,
+        start_index: int,
+        end_index: int,
+        cancelled: bool = False,
+    ) -> discord.Embed:
+        action = "has been cancelled" if cancelled else "has a new time"
+        embed = discord.Embed(
+            title=f"{plan.name} {action}",
+            color=discord.Color.red() if cancelled else discord.Color.orange(),
+        )
+        if old_start and old_end:
+            embed.add_field(
+                name="Previous time", value=time_range(old_start, old_end), inline=False
+            )
+        if not cancelled and plan.scheduled_start and plan.scheduled_end:
+            embed.add_field(
+                name="New time",
+                value=time_range(plan.scheduled_start, plan.scheduled_end),
+                inline=False,
+            )
+            embed.add_field(
+                name="Your availability",
+                value=(
+                    scheduled_availability_message(selected, blocks, start_index, end_index)
+                    if selected
+                    else "You did not mark yourself available at the new time."
+                ),
+                inline=False,
+            )
+        embed.set_footer(text=DM_TIME_NOTE)
+        return embed
+
+    async def _edit_summary(self, plan: EventPlan, channel, planning_message) -> None:
+        if plan.summary_message_id:
+            try:
+                summary = await channel.fetch_message(plan.summary_message_id)
+                await summary.edit(
+                    embed=self._summary_embed(plan, planning_url=planning_message.jump_url)
+                )
+                return
+            except (discord.NotFound, discord.HTTPException):
+                plan.summary_message_id = None
+        summary = await channel.send(
+            embed=self._summary_embed(plan, planning_url=planning_message.jump_url),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        plan.summary_message_id = summary.id
+
+    async def _notify(self, user_ids: set[int], embed_for) -> tuple[int, int]:
+        delivered = failed = 0
+        for user_id in user_ids:
+            try:
+                user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
+                await user.send(
+                    embed=embed_for(user_id), allowed_mentions=discord.AllowedMentions.none()
+                )
+                delivered += 1
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+                failed += 1
+        return delivered, failed
+
     @commands.Cog.listener()
     async def on_ready(self) -> None:
         """Restore planning cards from Discord history and their current reactions."""
         channel = self.bot.get_channel(int(self.planning_channel_id))
         if channel is None:
             return
+        summary_ids: dict[str, int] = {}
         try:
             async for message in channel.history(limit=None):
                 if message.author != self.bot.user or not message.embeds:
+                    continue
+                fields = {field.name: field.value for field in message.embeds[0].fields}
+                if message.embeds[0].title and message.embeds[0].title.startswith(
+                    ("EVENT ·", "CANCELLED ·")
+                ):
+                    if plan_id := fields.get("Plan ID"):
+                        summary_ids[plan_id] = message.id
                     continue
                 plan = parse_planning_footer(
                     message.embeds[0].footer.text,
@@ -201,6 +334,7 @@ class PlanningCog(commands.Cog, name="Planning"):
                     )
                 if plan is None:
                     continue
+                plan.summary_message_id = summary_ids.get(plan.id)
                 self.service.add(plan)
                 if plan.is_open:
                     for index in range(len(self._blocks(plan))):
@@ -385,34 +519,30 @@ class PlanningCog(commands.Cog, name="Planning"):
                     )
                 )
                 plan.scheduled_start, plan.scheduled_end = scheduled_start, scheduled_end
+                await self._edit_summary(plan, channel, message)
             else:
                 await interaction.response.send_message(
                     "I could not fetch the planning card.", ephemeral=True
                 )
                 return
+            audience = set(recipients)
+            plan.notified_user_ids.update(audience)
+            delivered, failed = await self._notify(
+                audience,
+                lambda user_id: self._scheduled_notification_embed(
+                    plan,
+                    selected=recipients[user_id],
+                    blocks=blocks,
+                    start_index=start_index,
+                    end_index=end_index,
+                    guild_name=(interaction.guild.name if interaction.guild else "This server"),
+                    jump_url=message.jump_url,
+                ),
+            )
             await interaction.response.send_message(
-                f"Scheduled **{plan.name}** (`{plan.id}`), slots {start}–{end}, and notifying {len(recipients)} available member(s).",
+                f"Scheduled **{plan.name}** (`{plan.id}`), slots {start}–{end}. DMs delivered: {delivered}; unavailable: {failed}.",
                 ephemeral=True,
             )
-            for user_id, selected in recipients.items():
-                try:
-                    user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)
-                    await user.send(
-                        embed=self._scheduled_notification_embed(
-                            plan,
-                            selected=selected,
-                            blocks=blocks,
-                            start_index=start_index,
-                            end_index=end_index,
-                            guild_name=(
-                                interaction.guild.name if interaction.guild else "This server"
-                            ),
-                            jump_url=message.jump_url,
-                        ),
-                        allowed_mentions=discord.AllowedMentions.none(),
-                    )
-                except (discord.Forbidden, discord.NotFound, discord.HTTPException):
-                    continue
 
     @plan.command(name="cancel", description="Close a planning poll without scheduling it")
     @app_commands.describe(id="Optional plan ID shown on the card")
@@ -435,9 +565,14 @@ class PlanningCog(commands.Cog, name="Planning"):
             return
         lock = self._locks.setdefault(plan.message_id, asyncio.Lock())
         async with lock:
-            if not plan.is_open:
+            if plan.cancelled:
                 await interaction.response.send_message(
-                    "This planning poll is already closed.", ephemeral=True
+                    "This planning poll is already cancelled.", ephemeral=True
+                )
+                return
+            if not plan.is_open and id is None:
+                await interaction.response.send_message(
+                    "A scheduled event can only be cancelled with its explicit ID.", ephemeral=True
                 )
                 return
             channel = self.bot.get_channel(plan.channel_id)
@@ -457,8 +592,116 @@ class PlanningCog(commands.Cog, name="Planning"):
                 )
             )
             plan.cancelled = True
+            if plan.scheduled_start and plan.scheduled_end:
+                await self._edit_summary(plan, channel, message)
+                blocks = self._blocks(plan)
+                start_index, end_index = schedule_indices(
+                    plan, plan.scheduled_start, plan.scheduled_end
+                )
+                audience = set(plan.notified_user_ids) or set(
+                    overlapping_users(plan, start_index, end_index)
+                )
+                delivered, failed = await self._notify(
+                    audience,
+                    lambda user_id: self._changed_notification_embed(
+                        plan,
+                        old_start=plan.scheduled_start,
+                        old_end=plan.scheduled_end,
+                        selected=set(),
+                        blocks=blocks,
+                        start_index=start_index,
+                        end_index=end_index,
+                        cancelled=True,
+                    ),
+                )
+            else:
+                delivered = failed = 0
+        message_text = f"Planning poll **{plan.name}** (`{plan.id}`) cancelled."
+        if delivered or failed:
+            message_text += f" DMs delivered: {delivered}; unavailable: {failed}."
+        await interaction.response.send_message(message_text, ephemeral=True)
+
+    @plan.command(name="modify", description="Change the time of a scheduled event")
+    @app_commands.describe(
+        id="Plan ID shown on the card",
+        start="First slot number (inclusive)",
+        end="Last slot number (inclusive)",
+    )
+    async def modify(self, interaction: discord.Interaction, id: str, start: int, end: int) -> None:
+        if not await self._require_planning_channel(interaction):
+            return
+        plan = self.service.find_open(plan_id=id)
+        if plan is None or plan.is_open or plan.cancelled:
+            await interaction.response.send_message(
+                "I could not find a scheduled event for that ID.", ephemeral=True
+            )
+            return
+        if (
+            interaction.user.id != plan.leader_id
+            and not interaction.user.guild_permissions.manage_messages
+        ):
+            await interaction.response.send_message(
+                "Only the planning leader or a moderator can modify this event.", ephemeral=True
+            )
+            return
+        try:
+            blocks = self._blocks(plan)
+            start_index, end_index = schedule_slot_indices(plan, start, end)
+            new_start, new_end = blocks[start_index].start, blocks[end_index - 1].end
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+        lock = self._locks.setdefault(plan.message_id, asyncio.Lock())
+        async with lock:
+            if plan.cancelled or plan.is_open:
+                await interaction.response.send_message(
+                    "This event is no longer scheduled.", ephemeral=True
+                )
+                return
+            if (new_start, new_end) == (plan.scheduled_start, plan.scheduled_end):
+                await interaction.response.send_message(
+                    "That is already the scheduled time.", ephemeral=True
+                )
+                return
+            old_start, old_end = plan.scheduled_start, plan.scheduled_end
+            old_indices = schedule_indices(plan, old_start, old_end)
+            recipients = set(overlapping_users(plan, *old_indices)) | set(
+                overlapping_users(plan, start_index, end_index)
+            )
+            channel = self.bot.get_channel(plan.channel_id)
+            message = await channel.fetch_message(plan.message_id) if channel else None
+            if message is None:
+                await interaction.response.send_message(
+                    "I could not fetch the planning card.", ephemeral=True
+                )
+                return
+            plan.scheduled_start, plan.scheduled_end = new_start, new_end
+            await message.edit(
+                embed=self._embed(
+                    plan,
+                    slot_labels=self._body_emoji_labels(
+                        getattr(message, "guild", None), len(blocks)
+                    ),
+                )
+            )
+            await self._edit_summary(plan, channel, message)
+            plan.notified_user_ids.update(recipients)
+            delivered, failed = await self._notify(
+                recipients,
+                lambda user_id: self._changed_notification_embed(
+                    plan,
+                    old_start=old_start,
+                    old_end=old_end,
+                    selected=plan.availability.get(user_id, set())
+                    & set(range(start_index, end_index)),
+                    blocks=blocks,
+                    start_index=start_index,
+                    end_index=end_index,
+                ),
+            )
         await interaction.response.send_message(
-            f"Planning poll **{plan.name}** (`{plan.id}`) cancelled.", ephemeral=True
+            f"Updated **{plan.name}** (`{plan.id}`). DMs delivered: {delivered}; unavailable: {failed}.",
+            ephemeral=True,
         )
 
     @commands.Cog.listener()
@@ -477,15 +720,48 @@ class PlanningCog(commands.Cog, name="Planning"):
             return
         if not self.service.update_reaction(reaction.message.id, user.id, index, added):
             return
-        plan = self.service.plans[reaction.message.id]
-        await reaction.message.edit(
-            embed=self._embed(
-                plan,
-                slot_labels=self._body_emoji_labels(
-                    getattr(reaction.message, "guild", None), len(self._blocks(plan))
-                ),
+        message_id = reaction.message.id
+        self._last_reaction_at[message_id] = asyncio.get_running_loop().time()
+        task = self._refresh_tasks.get(message_id)
+        if task is None or task.done():
+            self._refresh_tasks[message_id] = asyncio.create_task(
+                self._refresh_after_quiet_period(reaction.message)
             )
-        )
+
+    async def _refresh_after_quiet_period(self, message) -> None:
+        """Coalesce reaction bursts so Discord sees one edit after ten quiet seconds."""
+        message_id = message.id
+        try:
+            while True:
+                observed = self._last_reaction_at[message_id]
+                await asyncio.sleep(10)
+                if self._last_reaction_at.get(message_id) == observed:
+                    break
+            lock = self._locks.setdefault(message_id, asyncio.Lock())
+            async with lock:
+                plan = self.service.plans.get(message_id)
+                if plan is None or plan.cancelled:
+                    return
+                await message.edit(
+                    embed=self._embed(
+                        plan,
+                        slot_labels=self._body_emoji_labels(
+                            getattr(message, "guild", None), len(self._blocks(plan))
+                        ),
+                    )
+                )
+                if plan.scheduled_start:
+                    channel = self.bot.get_channel(plan.channel_id)
+                    if channel:
+                        await self._edit_summary(plan, channel, message)
+        except discord.HTTPException:
+            logger.exception("Could not refresh planning card message=%s", message_id)
+        finally:
+            self._refresh_tasks.pop(message_id, None)
+
+    def cog_unload(self) -> None:
+        for task in self._refresh_tasks.values():
+            task.cancel()
 
     @staticmethod
     def _reaction_index(emoji) -> int | None:

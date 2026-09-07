@@ -29,6 +29,8 @@ def format_planning_footer(plan: EventPlan) -> str:
         "se": plan.scheduled_end.isoformat() if plan.scheduled_end else None,
         "c": plan.cancelled,
         "tz": plan.input_timezone,
+        "su": plan.summary_message_id,
+        "nu": sorted(plan.notified_user_ids),
     }
     encoded = base64.urlsafe_b64encode(
         json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -62,6 +64,8 @@ def parse_planning_footer(
             scheduled_end=datetime.fromisoformat(payload["se"]) if payload["se"] else None,
             cancelled=payload["c"],
             input_timezone=payload.get("tz", "America/Los_Angeles"),
+            summary_message_id=payload.get("su"),
+            notified_user_ids=set(payload.get("nu", [])),
         )
     except (binascii.Error, KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None
@@ -112,6 +116,12 @@ def parse_planning_card(embed, *, message_id: int, channel_id: int) -> EventPlan
             scheduled_end=datetime.fromtimestamp(scheduled[1]).astimezone() if scheduled else None,
             cancelled=state == "CANCELLED",
             input_timezone=timezone,
+            notified_user_ids={
+                int(value)
+                for name, field_value in fields.items()
+                if name.startswith("Notified members")
+                for value in re.findall(r"<@(\d+)>", field_value)
+            },
         )
     except (AttributeError, KeyError, TypeError, ValueError):
         return None

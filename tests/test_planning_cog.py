@@ -25,8 +25,6 @@ def test_public_planning_card_uses_localized_timestamps_for_every_time_range():
     cog = PlanningCog(SimpleNamespace(), "2")
 
     embed = cog._embed(plan)
-    values = [field.value for field in embed.fields if field.name.startswith("Availability ·")]
-
     assert "All times below are shown in your local timezone." in embed.description
     assert (
         next(field.value for field in embed.fields if field.name == "Availability window").count(
@@ -34,8 +32,8 @@ def test_public_planning_card_uses_localized_timestamps_for_every_time_range():
         )
         == 2
     )
-    assert sum(value.count("<t:") for value in values) == 4
-    assert all(":s>" in value for value in values)
+    assert embed.description.count("<t:") == 4
+    assert ":s>" in embed.description
 
 
 def test_public_planning_card_uses_ice_emojis_for_every_availability_slot():
@@ -43,9 +41,7 @@ def test_public_planning_card_uses_ice_emojis_for_every_availability_slot():
     plan.ends_at = plan.starts_at + timedelta(hours=10)
 
     embed = PlanningCog(SimpleNamespace(), "2")._embed(plan)
-    availability = "\n".join(
-        field.value for field in embed.fields if field.name.startswith("Availability")
-    )
+    availability = embed.description
 
     assert "1 <t:" in availability
     assert "20 <t:" in availability
@@ -63,9 +59,7 @@ def test_public_planning_card_uses_resolved_custom_emoji_markup():
 
     labels = PlanningCog._body_emoji_labels(guild, 4)
     embed = PlanningCog(SimpleNamespace(), "2")._embed(plan, slot_labels=labels)
-    availability = next(
-        field.value for field in embed.fields if field.name.startswith("Availability ·")
-    )
+    availability = embed.description
 
     assert labels == ["<:ice_1:123>", "<a:ice_2:456>", "3", "4"]
     assert "<:ice_1:123> <t:" in availability
@@ -73,22 +67,16 @@ def test_public_planning_card_uses_resolved_custom_emoji_markup():
     assert "3 <t:" in availability
 
 
-def test_long_availability_cards_use_an_invisible_continuation_heading():
+def test_long_availability_cards_keep_rows_in_one_continuous_description():
     plan = make_plan()
     plan.ends_at = plan.starts_at + timedelta(hours=10)
     labels = [f"<:ice_{index}:123456789012345678>" for index in range(1, 21)]
 
     embed = PlanningCog(SimpleNamespace(), "2")._embed(plan, slot_labels=labels)
-    availability_fields = [
-        field
-        for field in embed.fields
-        if field.name.startswith("Availability ·") or field.name == "\u200b"
-    ]
-
-    assert len(availability_fields) == 2
-    assert availability_fields[1].name == "\u200b"
-    assert all(len(field.value) <= 1024 for field in availability_fields)
-    assert "Availability (continued)" not in [field.name for field in embed.fields]
+    assert embed.description.count("<t:") == 20
+    assert "<:ice_15:123456789012345678>" in embed.description
+    assert "<:ice_16:123456789012345678>" in embed.description
+    assert len(embed.description) <= 4096
 
 
 def test_scheduled_notification_card_is_self_contained_and_personalized():
@@ -206,7 +194,10 @@ async def test_schedule_sends_personalized_cards_and_continues_after_a_failed_dm
     service.add(plan)
 
     message = SimpleNamespace(jump_url="https://discord.com/channels/1/2/3", edit=AsyncMock())
-    channel = SimpleNamespace(fetch_message=AsyncMock(return_value=message))
+    summary = SimpleNamespace(id=4)
+    channel = SimpleNamespace(
+        fetch_message=AsyncMock(return_value=message), send=AsyncMock(return_value=summary)
+    )
     unavailable_response = SimpleNamespace(status=403, reason="Forbidden", headers={})
     unavailable_user = SimpleNamespace(
         send=AsyncMock(side_effect=discord.Forbidden(unavailable_response, "DMs are closed"))
@@ -241,3 +232,6 @@ async def test_schedule_sends_personalized_cards_and_continues_after_a_failed_dm
         "<t:1789237800:f> – <t:1789239600:f>"
     )
     assert available_user.send.call_args.kwargs["allowed_mentions"].everyone is False
+    summary_embed = channel.send.call_args.kwargs["embed"]
+    assert summary_embed.title == "EVENT · Bosses"
+    assert summary_embed.fields[0].name == "Plan ID"

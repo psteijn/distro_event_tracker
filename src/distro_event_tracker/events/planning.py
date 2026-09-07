@@ -48,6 +48,8 @@ class EventPlan:
     scheduled_end: datetime | None = None
     cancelled: bool = False
     availability: dict[int, set[int]] = field(default_factory=dict)
+    summary_message_id: int | None = None
+    notified_user_ids: set[int] = field(default_factory=set)
     input_timezone: str = "America/Los_Angeles"
 
     @property
