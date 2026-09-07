@@ -88,6 +88,8 @@ class PlanningCog(commands.Cog, name="Planning"):
                 chunks.append(chunk)
                 chunk = ""
             chunk = f"{chunk} {value}".strip()
+        if chunk:
+            chunks.append(chunk)
         return chunks or ["None"]
 
     def _embed(self, plan: EventPlan, *, slot_labels: list[str] | None = None) -> discord.Embed:
@@ -336,7 +338,9 @@ class PlanningCog(commands.Cog, name="Planning"):
                     continue
                 plan.summary_message_id = summary_ids.get(plan.id)
                 self.service.add(plan)
-                if plan.is_open:
+                # Scheduled plans still use live reactions to maintain their summary.
+                # Only cancelled plans must ignore availability reconstruction.
+                if not plan.cancelled:
                     for index in range(len(self._blocks(plan))):
                         reaction = next(
                             (

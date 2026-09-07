@@ -20,6 +20,39 @@ class RenderedEmoji:
         return self.rendered
 
 
+@pytest.mark.asyncio
+async def test_ready_restores_reactions_for_scheduled_plan_summaries():
+    plan = make_plan()
+    blocks = build_blocks(plan.starts_at, plan.ends_at)
+    plan.scheduled_start, plan.scheduled_end = blocks[0].start, blocks[0].end
+    card = PlanningCog(SimpleNamespace(), "2")._embed(plan)
+    author = SimpleNamespace()
+
+    async def reaction_users():
+        yield SimpleNamespace(id=10, bot=False)
+
+    reaction = SimpleNamespace(emoji=SimpleNamespace(name="ice_1"), users=reaction_users)
+    message = SimpleNamespace(id=1, author=author, embeds=[card], reactions=[reaction])
+
+    async def history(*, limit):
+        yield message
+
+    channel = SimpleNamespace(id=2, history=history)
+    bot = SimpleNamespace(user=author, get_channel=MagicMock(return_value=channel))
+    service = PlanningService()
+    cog = PlanningCog(bot, "2", service)
+
+    await cog.on_ready()
+
+    restored = service.plans[1]
+    assert restored.availability == {10: {0}}
+    summary = cog._summary_embed(restored, planning_url="https://example.test/poll")
+    assert (
+        next(field.value for field in summary.fields if field.name == "Available throughout")
+        == "<@10>"
+    )
+
+
 def test_public_planning_card_uses_localized_timestamps_for_every_time_range():
     plan = make_plan()
     cog = PlanningCog(SimpleNamespace(), "2")
