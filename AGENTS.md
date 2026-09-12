@@ -36,3 +36,9 @@ Follow [the server access contract](docs/server-access.md). Every operational SS
 for distro runtime and Home Assistant transfers. Keep shared alias defaults at psteijn.
 Use the repository transport helper and `sudo -n`; never change workload ownership
 or add public network exposure to work around permissions.
+
+## Shared infrastructure
+
+Use the installed `home-infrastructure` plugin for Synology router, shared-host, and
+cross-project network diagnosis. The repository transport helper is a compatibility loader for
+its shared module; retain it for this repository's operational scripts.

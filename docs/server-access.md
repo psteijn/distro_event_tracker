@@ -13,8 +13,9 @@ identity come from the local SSH config; never commit keys or credentials.
 | Home Assistant administration | codex | sudo -n /usr/local/sbin/ha-ops |
 | Game infrastructure administration | codex | root, or explicitly gameserver |
 
-Each repository owns its transport helper; no sibling checkout is required.
-The helper sets `BatchMode=yes`, `StrictHostKeyChecking=yes`,
+The repository transport helper is a compatibility loader for the shared
+`home-infrastructure` checkout (default `D:\dev\home-infrastructure`, overridable with
+`HOME_INFRASTRUCTURE_ROOT`). The shared module sets `BatchMode=yes`, `StrictHostKeyChecking=yes`,
 `ConnectTimeout=10`, `IdentitiesOnly=yes`, and an explicit `User`.
 Ordinary operations never allocate a terminal. A missing key, unknown host key,
 failed command or missing sudo grant is a failure, not an authentication prompt.
