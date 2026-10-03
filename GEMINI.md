@@ -33,7 +33,10 @@ the event embed. Use `update_embed_manual_attendance` for consistent formatting.
 
 Preserve the `!data` record format:
 
-`[event_id] [event_type] name: user1 (score), user2 (score)`
+`[event_id] [created_at] [event_type] name: user1 (score), user2 (score)`
+
+`created_at` is the event creation time in Pacific ISO 8601 with a numeric offset,
+for example `2026-10-04T20:00:00-07:00`.
 
 ## Development and validation
 
@@ -64,7 +67,7 @@ Preserve the `!data` record format:
 
 ## Event mappings
 
-Keep `EVENT_TYPE_MAP` and `BACKFILL_TYPE_MAP` aligned:
+Keep `EVENT_TYPE_MAP` in `events/scoring.py` and `BACKFILL_TYPE_MAP` aligned:
 
 - 🏰 → `dungeon` (1x)
 - ⚔️ → `mini` (1x)

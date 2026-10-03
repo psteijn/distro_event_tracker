@@ -12,7 +12,8 @@ backward-compatible contracts.
   reconstruction uses the newest complete snapshot and ignores incomplete replacements.
 - Human-readable dibs summaries may span multiple `📦 Current Dibs Summary`
   messages, each bounded to Discord's embed-description limit.
-- `!data` emits `[event_id] [event_type] name: user (score)`.
+- `!data` emits `[event_id] [created_at] [event_type] name: user (score)`.
+  `created_at` is Pacific ISO 8601 with a numeric offset.
 - Legacy planning-card footers use `Planning Data: <base64 JSON>`. New planning cards
   store their reconstruction data in readable fields: plan ID, leader, input timezone,
   original availability window, optional attributes, and scheduled time. Legacy

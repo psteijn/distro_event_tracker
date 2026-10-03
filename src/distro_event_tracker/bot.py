@@ -49,6 +49,7 @@ from .events.persistence import (
 )
 from .events.reminders import handle_event_reminder
 from .events.scoring import calculate_event_weighted_scores as calculate_domain_event_scores
+from .events.scoring import format_raw_data_summary
 from .events.service import EventService
 from .health import HealthServer
 
@@ -566,10 +567,6 @@ fifty_emoji = None
 twenty_five_emoji = None
 
 
-# Event type mapping for raw data output
-EVENT_TYPE_MAP = {"🏰": "dungeon", "⚔️": "mini", "🗺️": "t8", "👹": "main", "👑": "omni"}
-
-
 # Mapping for backfill command
 BACKFILL_TYPE_MAP = {
     "dungeon": ("🏰", 1.0, discord.Color.blue()),
@@ -1075,28 +1072,12 @@ class EventTracker:
         return summary
 
     def generate_raw_data_summary(self, events: List[Dict]) -> List[str]:
-        """Generate raw attendance data for events for the !data command"""
-        if not events:
-            return ["No events found"]
+        """Generate raw attendance data for events for the !data command.
 
-        event_strings = []
-        for event in events:
-            # We need the attendance with scores
-            weighted_scores = calculate_event_weighted_scores(event)
-
-            # Get event type from emoji
-            event_type = EVENT_TYPE_MAP.get(event.get('type_emoji', ''), 'unknown')
-
-            # Format: [event_id] [event_type] Event Name: User1 (score), User2 (score)
-            attendees = []
-            for user_name, score in weighted_scores.items():
-                score_str = f"{score:.2f}".rstrip('0').rstrip('.')
-                attendees.append(f"{user_name} ({score_str})")
-
-            line = f"[{event['id']}] [{event_type}] {event['name']}: {', '.join(attendees)}"
-            event_strings.append(line)
-
-        return event_strings
+        Format: [event_id] [created_at] [event_type] Event Name: User1 (score), User2 (score)
+        created_at is Pacific ISO 8601 with a numeric offset.
+        """
+        return format_raw_data_summary(events, PACIFIC_TZ)
 
     def calculate_weighted_average(self, events: List[Dict]) -> str:
         """Calculate weighted average of attendees across all events"""
@@ -2836,7 +2817,7 @@ async def help_events(ctx):
 
     embed.add_field(
         name="🔢 Raw Data",
-        value=f"`{BOT_PREFIX}data last N` - Raw attendance data with participation weights\n`{BOT_PREFIX}data ID1 ID2` - Raw data for range of events\n\n**Example:**\n• `{BOT_PREFIX}data last 3` (Raw data for the last 3 events)\n\nFormat: `[event_id] [type] Name: User (score), ...`",
+        value=f"`{BOT_PREFIX}data last N` - Raw attendance data with participation weights\n`{BOT_PREFIX}data ID1 ID2` - Raw data for range of events\n\n**Example:**\n• `{BOT_PREFIX}data last 3` (Raw data for the last 3 events)\n\nFormat: `[event_id] [created_at] [type] Name: User (score), ...`",
         inline=False,
     )
 

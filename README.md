@@ -155,7 +155,10 @@ The `!data` command is designed for data extraction, providing raw attendance in
 - **`!data <id1> <id2>`**: Raw data for events between two IDs.
 
 **Output Format:**
-`[event_id] Event Name (multiplier): User1 (score), User2 (score), ...`
+`[event_id] [created_at] [event_type] Event Name: User1 (score), User2 (score), ...`
+
+`created_at` is the event creation time in Pacific ISO 8601, such as
+`2026-10-04T20:00:00-07:00`, so the calendar day matches Pacific time.
 
 ### Administrative Tools
 - **`!add_users <id> <multiplier> @user...`**: Manually add attendees with a specific weight (1.0, 0.75, 0.5, 0.25).
